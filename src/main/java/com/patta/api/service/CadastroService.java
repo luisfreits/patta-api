@@ -1,7 +1,7 @@
 package com.patta.api.service;
 
 import com.patta.api.dto.CadastroRequestDTO;
-import com.patta.api.model.User;
+import com.patta.api.model.UserModel;
 import com.patta.api.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -40,7 +40,7 @@ public class CadastroService {
     }
 
     // 2. FINALIZA O FLUXO: Valida o código e salva no banco de dados (Firestore)
-    public User confirmarCadastro(String email, String codigo) throws ExecutionException, InterruptedException {
+    public UserModel confirmarCadastro(String email, String codigo) throws ExecutionException, InterruptedException {
         DadosTemporarios temp = cacheCadastros.get(email);
 
         if (temp == null) {
@@ -57,14 +57,14 @@ public class CadastroService {
         }
 
         // Código certo! Transforma o DTO no seu Model final e salva no Firestore
-        User novoUser = User.builder()
+        UserModel novoUserModel = UserModel.builder()
                 .nome(temp.dados.getNome())
                 .email(temp.dados.getEmail())
                 .telefone(temp.dados.getTelefone())
                 // NOTA: Em um app real, criptografe a senha aqui (ex: BCrypt) antes de salvar
                 .build();
 
-        User salvo = userRepository.save(novoUser);
+        UserModel salvo = userRepository.save(novoUserModel);
 
         // Remove da memória pois já foi salvo no banco
         cacheCadastros.remove(email);

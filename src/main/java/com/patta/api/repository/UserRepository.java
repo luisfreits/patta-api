@@ -1,7 +1,7 @@
 package com.patta.api.repository;
 
 
-import com.patta.api.model.User;
+import com.patta.api.model.UserModel;
 import com.google.api.core.ApiFuture;
 import com.google.cloud.firestore.*;
 import lombok.RequiredArgsConstructor;
@@ -22,25 +22,25 @@ public class UserRepository {
     private final Firestore firestore;
 
     // --- CRIAR / ATUALIZAR USUÁRIO ---
-    public User save(User user) throws ExecutionException, InterruptedException {
+    public UserModel save(UserModel userModel) throws ExecutionException, InterruptedException {
         DocumentReference docRef;
 
         // Se o objeto não tiver ID, gera um novo ID de documento automaticamente no Firestore
-        if (user.getId() == null || user.getId().isBlank()) {
+        if (userModel.getId() == null || userModel.getId().isBlank()) {
             docRef = firestore.collection(COLLECTION).document();
-            user.setId(docRef.getId());
+            userModel.setId(docRef.getId());
         } else {
             // Se já possui ID, referencia o documento existente para sobrescrevê-lo
-            docRef = firestore.collection(COLLECTION).document(user.getId());
+            docRef = firestore.collection(COLLECTION).document(userModel.getId());
         }
 
         // Persiste os dados de forma assíncrona, mas aguarda a confirmação com o .get()
-        docRef.set(user).get();
-        return user;
+        docRef.set(userModel).get();
+        return userModel;
     }
 
     // --- BUSCAR USUÁRIO POR ID ---
-    public Optional<User> findById(String id) throws ExecutionException, InterruptedException {
+    public Optional<UserModel> findById(String id) throws ExecutionException, InterruptedException {
         DocumentSnapshot doc = firestore.collection(COLLECTION)
                 .document(id)
                 .get()
@@ -50,23 +50,23 @@ public class UserRepository {
             return Optional.empty();
         }
 
-        User user = doc.toObject(User.class);
-        if (user != null) user.setId(doc.getId());
-        return Optional.ofNullable(user);
+        UserModel userModel = doc.toObject(UserModel.class);
+        if (userModel != null) userModel.setId(doc.getId());
+        return Optional.ofNullable(userModel);
     }
 
     // --- LISTAR TODOS OS USUÁRIOS ---
-    public List<User> findAll() throws ExecutionException, InterruptedException {
+    public List<UserModel> findAll() throws ExecutionException, InterruptedException {
         ApiFuture<QuerySnapshot> future = firestore.collection(COLLECTION).get();
         List<QueryDocumentSnapshot> docs = future.get().getDocuments();
 
-        List<User> users = new ArrayList<>();
+        List<UserModel> userModels = new ArrayList<>();
         for (QueryDocumentSnapshot doc : docs) {
-            User user = doc.toObject(User.class);
-            user.setId(doc.getId());
-            users.add(user);
+            UserModel userModel = doc.toObject(UserModel.class);
+            userModel.setId(doc.getId());
+            userModels.add(userModel);
         }
-        return users;
+        return userModels;
     }
 
     // --- REMOVER USUÁRIO POR ID ---

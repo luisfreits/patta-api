@@ -2,7 +2,7 @@ package com.patta.api.controller;
 
 import com.patta.api.dto.CadastroRequestDTO;
 import com.patta.api.dto.ConfirmacaoRequestDTO;
-import com.patta.api.model.User;
+import com.patta.api.model.UserModel;
 import com.patta.api.service.CadastroService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -33,7 +33,7 @@ public class AuthController {
     @PostMapping("/confirmar")
     public ResponseEntity<?> confirmarCadastro(@RequestBody ConfirmacaoRequestDTO request) {
         try {
-            User criado = cadastroService.confirmarCadastro(request.getEmail(), request.getCodigo());
+            UserModel criado = cadastroService.confirmarCadastro(request.getEmail(), request.getCodigo());
             return ResponseEntity.status(HttpStatus.CREATED).body(criado);
         } catch (RuntimeException | ExecutionException | InterruptedException e) {
             return ResponseEntity.badRequest().body(e.getMessage());

@@ -1,6 +1,6 @@
 package com.patta.api.controller;
 
-import com.patta.api.model.User;
+import com.patta.api.model.UserModel;
 import com.patta.api.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -19,35 +19,35 @@ public class UserController {
 
     // --- ROTA: Criar Novo Usuário (POST /api/users) ---
     @PostMapping
-    public ResponseEntity<User> criar(@RequestBody User user)
+    public ResponseEntity<UserModel> criar(@RequestBody UserModel userModel)
             throws ExecutionException, InterruptedException {
-        User criado = userRepository.save(user);
+        UserModel criado = userRepository.save(userModel);
         return ResponseEntity.status(HttpStatus.CREATED).body(criado);
     }
 
     // --- ROTA: Obter Usuário por ID (GET /api/users/{id}) ---
     @GetMapping("/{id}")
-    public ResponseEntity<User> buscarPorId(@PathVariable String id)
+    public ResponseEntity<UserModel> buscarPorId(@PathVariable String id)
             throws ExecutionException, InterruptedException {
-        User user = userRepository.findById(id)
+        UserModel userModel = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Usuário não encontrado: " + id));
-        return ResponseEntity.ok(user);
+        return ResponseEntity.ok(userModel);
     }
 
     // --- ROTA: Obter Todos os Usuários (GET /api/users) ---
     @GetMapping
-    public ResponseEntity<List<User>> listarTodos()
+    public ResponseEntity<List<UserModel>> listarTodos()
             throws ExecutionException, InterruptedException {
-        List<User> users = userRepository.findAll();
-        return ResponseEntity.ok(users);
+        List<UserModel> userModels = userRepository.findAll();
+        return ResponseEntity.ok(userModels);
     }
 
     // --- ROTA: Atualizar Usuário Existente (PUT /api/users/{id}) ---
     @PutMapping("/{id}")
-    public ResponseEntity<User> atualizar(@PathVariable String id, @RequestBody User user)
+    public ResponseEntity<UserModel> atualizar(@PathVariable String id, @RequestBody UserModel userModel)
             throws ExecutionException, InterruptedException {
-        user.setId(id);
-        User atualizado = userRepository.save(user);
+        userModel.setId(id);
+        UserModel atualizado = userRepository.save(userModel);
         return ResponseEntity.ok(atualizado);
     }
 
