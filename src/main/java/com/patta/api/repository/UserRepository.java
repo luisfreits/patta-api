@@ -1,14 +1,12 @@
 package com.patta.api.repository;
 
-
+import com.google.cloud.firestore.DocumentReference;
+import com.google.cloud.firestore.DocumentSnapshot;
+import com.google.cloud.firestore.Firestore;
 import com.patta.api.model.UserModel;
-import com.google.api.core.ApiFuture;
-import com.google.cloud.firestore.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 
@@ -53,20 +51,6 @@ public class UserRepository {
         UserModel userModel = doc.toObject(UserModel.class);
         if (userModel != null) userModel.setId(doc.getId());
         return Optional.ofNullable(userModel);
-    }
-
-    // --- LISTAR TODOS OS USUÁRIOS ---
-    public List<UserModel> findAll() throws ExecutionException, InterruptedException {
-        ApiFuture<QuerySnapshot> future = firestore.collection(COLLECTION).get();
-        List<QueryDocumentSnapshot> docs = future.get().getDocuments();
-
-        List<UserModel> userModels = new ArrayList<>();
-        for (QueryDocumentSnapshot doc : docs) {
-            UserModel userModel = doc.toObject(UserModel.class);
-            userModel.setId(doc.getId());
-            userModels.add(userModel);
-        }
-        return userModels;
     }
 
     // --- REMOVER USUÁRIO POR ID ---

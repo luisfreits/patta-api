@@ -12,102 +12,75 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
-// @RequiredArgsConstructor (Lombok) gera o construtor com os campos "final",
-// e o Spring injeta o repository automaticamente, igual no seu CadastroService.
+/** Regras de negócio e autorização por proprietário para os animais. */
 @Service
 @RequiredArgsConstructor
 public class AnimalService {
 
     private final AnimalRepository animalRepository;
 
-    // CRIAR -----------------------------------------------------------
-    public AnimalResponseDTO criar(String userId, AnimalRequestDTO dto)
+    public AnimalResponseDTO criar(String authenticatedUid, AnimalRequestDTO request)
             throws ExecutionException, InterruptedException {
-
-        // Monta o Model com o builder (mesmo estilo do UserModel).
+        // O vínculo é definido aqui pelo principal autenticado, nunca por um campo enviado pelo cliente.
         AnimalModel animal = AnimalModel.builder()
-                .userId(userId)   // <- A CONEXÃO: carimbamos o dono aqui
-                .nome(dto.getNome())
-                .sexo(dto.getSexo())
-                .idade(dto.getIdade())
-                .animal(dto.getAnimal())
-                .castrado(dto.getCastrado())
+                .userId(authenticatedUid)
+                .nome(request.getNome().trim())
+                .sexo(request.getSexo().trim())
+                .idade(request.getIdade())
+                .animal(request.getAnimal().trim())
+                .castrado(request.getCastrado())
                 .build();
-
-        // O repository preenche o id gerado pelo Firestore.
-        return paraResponse(animalRepository.save(animal));
+        return toResponse(animalRepository.save(animal));
     }
 
-    // LISTAR os animais do usuário logado ------------------------------
-    public List<AnimalResponseDTO> listar(String userId)
+    public List<AnimalResponseDTO> listar(String authenticatedUid)
             throws ExecutionException, InterruptedException {
-
-        return animalRepository.findByUserId(userId)
-                .stream()
-                .map(this::paraResponse)  // Model -> DTO, um por um
-                .toList();
+        // O repository aplica whereEqualTo(userId, uid), isolando a lista no Firestore.
+        return animalRepository.findByUserId(authenticatedUid).stream().map(this::toResponse).toList();
     }
 
-    // BUSCAR um animal (com checagem de dono) --------------------------
-    public AnimalResponseDTO buscar(String userId, String animalId)
+    public AnimalResponseDTO buscar(String authenticatedUid, String animalId)
             throws ExecutionException, InterruptedException {
-        return paraResponse(buscarEValidarDono(userId, animalId));
+        return toResponse(findOwnedAnimal(authenticatedUid, animalId));
     }
 
-    // ATUALIZAR (com checagem de dono) ---------------------------------
-    public AnimalResponseDTO atualizar(String userId, String animalId, AnimalRequestDTO dto)
+    public AnimalResponseDTO atualizar(String authenticatedUid, String animalId, AnimalRequestDTO request)
             throws ExecutionException, InterruptedException {
-
-        // Garante que o animal existe e é do usuário ANTES de alterar.
-        AnimalModel animal = buscarEValidarDono(userId, animalId);
-
-        // Só mexemos nos campos editáveis; id e userId permanecem intactos.
-        animal.setNome(dto.getNome());
-        animal.setSexo(dto.getSexo());
-        animal.setIdade(dto.getIdade());
-        animal.setAnimal(dto.getAnimal());
-        animal.setCastrado(dto.getCastrado());
-
-        // Como o id está preenchido, o save sobrescreve o documento existente.
-        return paraResponse(animalRepository.save(animal));
+        AnimalModel animal = findOwnedAnimal(authenticatedUid, animalId);
+        // Só os campos editáveis mudam; id e userId continuam ligados ao mesmo documento e dono.
+        animal.setNome(request.getNome().trim());
+        animal.setSexo(request.getSexo().trim());
+        animal.setIdade(request.getIdade());
+        animal.setAnimal(request.getAnimal().trim());
+        animal.setCastrado(request.getCastrado());
+        return toResponse(animalRepository.save(animal));
     }
 
-    // DELETAR (com checagem de dono) -----------------------------------
-    public void deletar(String userId, String animalId)
+    public void deletar(String authenticatedUid, String animalId)
             throws ExecutionException, InterruptedException {
-        buscarEValidarDono(userId, animalId); // lança erro se não for dono
+        findOwnedAnimal(authenticatedUid, animalId);
         animalRepository.deleteById(animalId);
     }
 
-    // AUXILIARES -------------------------------------------------------
-
-    // Reutilizado por buscar, atualizar e deletar.
-    private AnimalModel buscarEValidarDono(String userId, String animalId)
+    private AnimalModel findOwnedAnimal(String authenticatedUid, String animalId)
             throws ExecutionException, InterruptedException {
-
-        AnimalModel animal = animalRepository.findById(animalId);
-
-        if (animal == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Animal não encontrado");
+        AnimalModel animal = animalRepository.findById(animalId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Animal não encontrado."));
+        if (!authenticatedUid.equals(animal.getUserId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Este animal pertence a outro usuário.");
         }
-
-        // Sem esta checagem, qualquer usuário logado mexeria no animal
-        // de outro só por adivinhar o ID.
-        if (!animal.getUserId().equals(userId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Este animal não é seu");
-        }
-
         return animal;
     }
 
-    private AnimalResponseDTO paraResponse(AnimalModel a) {
+    // O DTO evita que detalhes internos, em especial userId, sejam expostos na resposta HTTP.
+    private AnimalResponseDTO toResponse(AnimalModel animal) {
         return AnimalResponseDTO.builder()
-                .id(a.getId())
-                .nome(a.getNome())
-                .sexo(a.getSexo())
-                .idade(a.getIdade())
-                .animal(a.getAnimal())
-                .castrado(a.getCastrado())
+                .id(animal.getId())
+                .nome(animal.getNome())
+                .sexo(animal.getSexo())
+                .idade(animal.getIdade())
+                .animal(animal.getAnimal())
+                .castrado(animal.getCastrado())
                 .build();
     }
 }

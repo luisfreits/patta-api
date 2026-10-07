@@ -12,7 +12,9 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class UserModel {
 
+    // O id é o UID do Firebase Authentication e também users/{uid} no Firestore.
     private String id;
+
     private String nome;
     private String email;
     private String telefone;

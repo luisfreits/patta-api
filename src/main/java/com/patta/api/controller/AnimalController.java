@@ -3,64 +3,73 @@ package com.patta.api.controller;
 import com.patta.api.dto.AnimalRequestDTO;
 import com.patta.api.dto.AnimalResponseDTO;
 import com.patta.api.service.AnimalService;
-import com.patta.api.service.AuthService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
-@RestController
-@RequestMapping("/animais")
-@RequiredArgsConstructor
+/** Rotas protegidas de animais; o token define o dono em todas as operações. */
+@RestController // Indica que a classe recebe requisições HTTP e devolve JSON
+@RequestMapping("/animais") // Todas as rotas daqui começam com /animais
+@RequiredArgsConstructor // O Lombok cria o construtor com os campos final (injeção do service)
 public class AnimalController {
 
+    // Service que tem a lógica de negócio dos animais
     private final AnimalService animalService;
-    private final AuthService authService;
 
-    // POST /animais
+    // POST /animais -> cadastra um novo animal
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED) // 201
-    public AnimalResponseDTO criar(@RequestHeader("Authorization") String auth,
-                                   @RequestBody AnimalRequestDTO dto)
-            throws ExecutionException, InterruptedException {
-        String userId = authService.identificarUsuario(auth);
-        return animalService.criar(userId, dto);
+    @ResponseStatus(HttpStatus.CREATED) // Devolve status 201 (criado) em vez de 200
+    public AnimalResponseDTO criar(@AuthenticationPrincipal String uid, // uid do usuário logado, vem do token
+                                   @Valid @RequestBody AnimalRequestDTO request) // Lê o JSON do corpo e valida os campos
+            throws ExecutionException, InterruptedException { // Exceções que podem vir da chamada assíncrona ao banco
+        // Passa o uid pro service saber de quem é o animal
+        return animalService.criar(uid, request);
     }
 
-    // GET /animais -> só os animais de quem está logado.
-    // Não existe /animais/{userId}: o usuário vem do token, então
-    // ninguém consegue listar os animais de outra pessoa.
+    // GET /animais -> lista os animais do usuário logado
     @GetMapping
-    public List<AnimalResponseDTO> listar(@RequestHeader("Authorization") String auth)
+    public List<AnimalResponseDTO> listar(@AuthenticationPrincipal String uid)
             throws ExecutionException, InterruptedException {
-        return animalService.listar(authService.identificarUsuario(auth));
+        // Só traz os animais desse usuário
+        return animalService.listar(uid);
     }
 
-    // GET /animais/{id}
+    // GET /animais/{id} -> busca um animal específico pelo id
     @GetMapping("/{id}")
-    public AnimalResponseDTO buscar(@RequestHeader("Authorization") String auth,
-                                    @PathVariable String id)
+    public AnimalResponseDTO buscar(@AuthenticationPrincipal String uid,
+                                    @PathVariable String id) // Pega o id que vem na URL
             throws ExecutionException, InterruptedException {
-        return animalService.buscar(authService.identificarUsuario(auth), id);
+        // Usa o uid também pra garantir que o animal é do usuário
+        return animalService.buscar(uid, id);
     }
 
-    // PUT /animais/{id}
+    // PUT /animais/{id} -> atualiza os dados de um animal
     @PutMapping("/{id}")
-    public AnimalResponseDTO atualizar(@RequestHeader("Authorization") String auth,
-                                       @PathVariable String id,
-                                       @RequestBody AnimalRequestDTO dto)
+    public AnimalResponseDTO atualizar(@AuthenticationPrincipal String uid,
+                                       @PathVariable String id, // id do animal na URL
+                                       @Valid @RequestBody AnimalRequestDTO request) // Novos dados, já validados
             throws ExecutionException, InterruptedException {
-        return animalService.atualizar(authService.identificarUsuario(auth), id, dto);
+        return animalService.atualizar(uid, id, request);
     }
 
-    // DELETE /animais/{id}
+    // DELETE /animais/{id} -> apaga um animal
     @DeleteMapping("/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT) // 204
-    public void deletar(@RequestHeader("Authorization") String auth,
-                        @PathVariable String id)
+    @ResponseStatus(HttpStatus.NO_CONTENT) // Devolve status 204 (sem conteúdo), pois não retorna nada
+    public void deletar(@AuthenticationPrincipal String uid, @PathVariable String id)
             throws ExecutionException, InterruptedException {
-        animalService.deletar(authService.identificarUsuario(auth), id);
+        animalService.deletar(uid, id);
     }
 }

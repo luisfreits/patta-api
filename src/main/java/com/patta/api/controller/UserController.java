@@ -1,68 +1,47 @@
 package com.patta.api.controller;
 
-import com.patta.api.model.UserModel;
-import com.patta.api.repository.UserRepository;
+import com.patta.api.dto.UserResponseDTO;
+import com.patta.api.dto.UserUpdateDTO;
+import com.patta.api.service.UserService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 import java.util.concurrent.ExecutionException;
 
+/** Endpoints para o perfil do próprio usuário, identificado pelo token e não pelo corpo da chamada. */
 @RestController
-@RequestMapping("/api/users")
+@RequestMapping("/users/me")
 @RequiredArgsConstructor
 public class UserController {
 
-    private final UserRepository userRepository;
+    private final UserService userService;
 
-    // --- ROTA: Criar Novo Usuário (POST /api/users) ---
-    @PostMapping
-    public ResponseEntity<UserModel> criar(@RequestBody UserModel userModel)
-            throws ExecutionException, InterruptedException {
-        UserModel criado = userRepository.save(userModel);
-        return ResponseEntity.status(HttpStatus.CREATED).body(criado);
-    }
-
-    // --- ROTA: Obter Usuário por ID (GET /api/users/{id}) ---
-    @GetMapping("/{id}")
-    public ResponseEntity<UserModel> buscarPorId(@PathVariable String id)
-            throws ExecutionException, InterruptedException {
-        UserModel userModel = userRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Usuário não encontrado: " + id));
-        return ResponseEntity.ok(userModel);
-    }
-
-    // --- ROTA: Obter Todos os Usuários (GET /api/users) ---
     @GetMapping
-    public ResponseEntity<List<UserModel>> listarTodos()
+    public UserResponseDTO buscarMeuPerfil(@AuthenticationPrincipal String uid)
             throws ExecutionException, InterruptedException {
-        List<UserModel> userModels = userRepository.findAll();
-        return ResponseEntity.ok(userModels);
+        return userService.buscarMeuPerfil(uid);
     }
 
-    // --- ROTA: Atualizar Usuário Existente (PUT /api/users/{id}) ---
-    @PutMapping("/{id}")
-    public ResponseEntity<UserModel> atualizar(@PathVariable String id, @RequestBody UserModel userModel)
+    @PutMapping
+    public UserResponseDTO atualizarMeuPerfil(@AuthenticationPrincipal String uid,
+                                               @Valid @RequestBody UserUpdateDTO request)
             throws ExecutionException, InterruptedException {
-        userModel.setId(id);
-        UserModel atualizado = userRepository.save(userModel);
-        return ResponseEntity.ok(atualizado);
+        return userService.atualizarMeuPerfil(uid, request);
     }
 
-    // --- ROTA: Excluir Usuário (DELETE /api/users/{id}) ---
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deletar(@PathVariable String id)
+    @DeleteMapping
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deletarMinhaConta(@AuthenticationPrincipal String uid)
             throws ExecutionException, InterruptedException {
-        userRepository.deleteById(id);
-        return ResponseEntity.noContent().build();
-    }
-
-    // --- HANDLER DE ERRO LOCAL ---
-    // Intercepta RuntimeException lançadas neste Controller e retorna HTTP status 404 (Not Found)
-    @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<String> handleNotFound(RuntimeException ex) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ex.getMessage());
+        userService.deletarMinhaConta(uid);
     }
 }
