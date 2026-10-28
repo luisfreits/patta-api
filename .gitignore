@@ -1,0 +1,65 @@
+HELP.md
+target/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+# Credenciais do Firebase
+src/main/resources/firebase-service-account.json
+src/main/resources/firebase-service-account*.json
+serviceAccountKey.json
+/secrets/
+*service-account*.json
+*adminsdk*.json
+*.pem
+*.p12
+*.key
+
+# Arquivo de variáveis de ambiente locais
+.env
+.env.*
+*.env
+!*.env.example
+# Chaves do Firebase (nunca versionar)
+taivet-firebase-adminsdk*.json
+firebase-service-account*.json
+*adminsdk*.json
+
+# Artefatos e arquivos locais
+build/
+out/
+.gradle/
+logs/
+*.log
+hs_err_pid*.log
+replay_pid*.log
+.DS_Store
+Thumbs.db
