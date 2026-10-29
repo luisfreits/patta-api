@@ -1,5 +1,5 @@
 # Patta API
-
+para rodar a api se usa o comando `.\mvnw.cmd spring-boot:run`
 ## Perfis de acesso
 
 Toda conta criada por `POST /cadastro/solicitar` é um usuário comum. A conta
