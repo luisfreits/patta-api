@@ -4,6 +4,7 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.AuthErrorCode;
 import com.google.firebase.auth.UserRecord;
+import com.patta.api.service.PapelUsuarioService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -11,14 +12,12 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
-import java.util.List;
 
 /**
  * Valida o token Bearer do Firebase em cada requisição protegida e grava o uid
@@ -30,10 +29,9 @@ public class FirebaseTokenFilter extends OncePerRequestFilter {
 
     private static final String PREFIXO_BEARER = "Bearer ";
     private static final String MENSAGEM_NAO_AUTORIZADO = "Token ausente ou inválido.";
-    private static final List<SimpleGrantedAuthority> PAPEIS = List.of(new SimpleGrantedAuthority("ROLE_USER"));
-
     private final FirebaseAuth firebaseAuth;
     private final ObjectMapper objectMapper;
+    private final PapelUsuarioService papelUsuarioService;
 
     /** Rotas públicas passam sem análise de token; status e reenvio exigem autenticação. */
     @Override
@@ -97,10 +95,10 @@ public class FirebaseTokenFilter extends OncePerRequestFilter {
             return;
         }
 
-        // Principal = uid, sem credencial (null) e com o papel ROLE_USER.
+        // Principal = uid, sem credencial (null), com papel definido pela configuração do servidor.
         // É daqui que o @AuthenticationPrincipal lê o uid nos controllers.
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(uid, null, PAPEIS));
+                new UsernamePasswordAuthenticationToken(uid, null, papelUsuarioService.buscarAutoridades(uid)));
         filterChain.doFilter(request, response);
     }
 }

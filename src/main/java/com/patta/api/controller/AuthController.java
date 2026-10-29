@@ -5,10 +5,12 @@ import com.patta.api.dto.EsqueciSenhaRequestDTO;
 import com.patta.api.dto.LoginRequestDTO;
 import com.patta.api.dto.LoginResponseDTO;
 import com.patta.api.dto.MessageResponseDTO;
+import com.patta.api.dto.PerfilAutenticadoDTO;
 import com.patta.api.dto.VerificationStatusDTO;
 import com.patta.api.service.CadastroService;
 import com.patta.api.service.FirebaseEmailVerificationService;
 import com.patta.api.service.LoginService;
+import com.patta.api.service.PapelUsuarioService;
 import com.patta.api.service.RedefinicaoSenhaService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +32,13 @@ public class AuthController {
     private final FirebaseEmailVerificationService emailVerificationService;
     private final LoginService loginService;
     private final RedefinicaoSenhaService redefinicaoSenhaService;
+    private final PapelUsuarioService papelUsuarioService;
+
+    /** GET /auth/me: retorna o UID e o papel definidos pelo servidor para a conta autenticada. */
+    @GetMapping("/auth/me")
+    public PerfilAutenticadoDTO perfilAutenticado(@AuthenticationPrincipal String uid) {
+        return new PerfilAutenticadoDTO(uid, papelUsuarioService.buscarPapel(uid));
+    }
 
     /** POST /cadastro/solicitar: cria a conta e solicita o link nativo do Firebase. Retorna 202. */
     @PostMapping("/cadastro/solicitar")

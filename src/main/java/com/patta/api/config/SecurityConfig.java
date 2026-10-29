@@ -2,6 +2,7 @@ package com.patta.api.config;
 
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpMethod;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -58,6 +59,7 @@ public class SecurityConfig {
                         .accessDeniedHandler((request, response, exception) ->
                                 RespostaErro.escrever(response, objectMapper, 403, "Acesso negado.")))
                 .authorizeHttpRequests(autorizacao -> autorizacao
+                        .requestMatchers(HttpMethod.PATCH, "/agendamentos/*/status").hasRole("ADMIN")
                         .requestMatchers(RotasPublicas.ROTAS_AUTENTICADAS).authenticated()
                         .requestMatchers(RotasPublicas.PADROES).permitAll()
                         .anyRequest().authenticated())

@@ -21,4 +21,10 @@ class RotasPublicasTest {
         assertTrue(RotasPublicas.permiteContaNaoVerificada(RotasPublicas.ROTA_STATUS_VERIFICACAO));
         assertFalse(RotasPublicas.permiteContaNaoVerificada("/users/me"));
     }
+
+    @Test
+    void perfilDePapelExigeAutenticacao() {
+        assertFalse(RotasPublicas.isPublica(RotasPublicas.ROTA_PERFIL_AUTENTICADO));
+        assertFalse(RotasPublicas.permiteContaNaoVerificada(RotasPublicas.ROTA_PERFIL_AUTENTICADO));
+    }
 }

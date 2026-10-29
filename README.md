@@ -1,5 +1,18 @@
 # Patta API
 
+## Perfis de acesso
+
+Toda conta criada por `POST /cadastro/solicitar` é um usuário comum. A conta
+administradora deve ser autorizada por configuração de servidor: defina `ADMIN_UIDS`
+com o UID da conta no Firebase Authentication. Para várias contas, separe os UIDs por
+vírgula. Se a variável estiver vazia, todos os usuários terão papel `USER`.
+
+`GET /auth/me` exige ID token válido e e-mail verificado e retorna o UID autenticado e
+o papel atribuído pelo servidor (`ADMIN` ou `USER`). O papel também é aplicado às
+autoridades do Spring Security; operações administrativas verificam a autorização no
+backend, independentemente do que a interface web mostrar. Nunca aceite o papel enviado
+pelo cliente como fonte de autorização.
+
 ## Cadastro e verificação de e-mail
 
 O cadastro é criado no Firebase Authentication com `emailVerified=false`. O perfil é

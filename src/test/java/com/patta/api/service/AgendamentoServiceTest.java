@@ -40,7 +40,8 @@ class AgendamentoServiceTest {
 
     private final AgendamentoRepository repository = mock(AgendamentoRepository.class);
     private final AnimalService animalService = mock(AnimalService.class);
-    private final AgendamentoService service = new AgendamentoService(repository, animalService, ADMIN_UID);
+    private final PapelUsuarioService papelUsuarioService = new PapelUsuarioService(ADMIN_UID);
+    private final AgendamentoService service = new AgendamentoService(repository, animalService, papelUsuarioService);
 
     @BeforeEach
     void limparMocks() {
@@ -138,7 +139,8 @@ class AgendamentoServiceTest {
 
     @Test
     void semUidsAdministrativosConfiguradosNinguemPodeAlterarStatus() {
-        AgendamentoService serviceSemAdministradores = new AgendamentoService(repository, animalService, "");
+        AgendamentoService serviceSemAdministradores = new AgendamentoService(
+                repository, animalService, new PapelUsuarioService(""));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> serviceSemAdministradores.alterarStatus(ADMIN_UID, "a1",

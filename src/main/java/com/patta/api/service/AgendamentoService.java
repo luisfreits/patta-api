@@ -6,7 +6,6 @@ import com.patta.api.dto.AgendamentoStatusRequestDTO;
 import com.patta.api.model.AgendamentoModel;
 import com.patta.api.model.AgendamentoStatus;
 import com.patta.api.repository.AgendamentoRepository;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -16,11 +15,9 @@ import java.time.LocalTime;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
-import java.util.stream.Collectors;
 
 @Service
 public class AgendamentoService {
@@ -29,17 +26,14 @@ public class AgendamentoService {
 
     private final AgendamentoRepository agendamentoRepository;
     private final AnimalService animalService;
-    private final Set<String> uidsAdministrativos;
+    private final PapelUsuarioService papelUsuarioService;
 
     public AgendamentoService(AgendamentoRepository agendamentoRepository,
                               AnimalService animalService,
-                              @Value("${app.admin.uids:}") String uidsAdministrativos) {
+                              PapelUsuarioService papelUsuarioService) {
         this.agendamentoRepository = agendamentoRepository;
         this.animalService = animalService;
-        this.uidsAdministrativos = Arrays.stream(uidsAdministrativos.split(","))
-                .map(String::trim)
-                .filter(uid -> !uid.isEmpty())
-                .collect(Collectors.toUnmodifiableSet());
+        this.papelUsuarioService = papelUsuarioService;
     }
 
     public AgendamentoResponseDTO criar(String uid, AgendamentoRequestDTO request)
@@ -113,7 +107,7 @@ public class AgendamentoService {
     }
 
     private boolean isAdministrador(String uid) {
-        return uidsAdministrativos.contains(uid);
+        return papelUsuarioService.ehAdministrador(uid);
     }
 
     private static ResponseStatusException naoEncontrado() {
