@@ -80,6 +80,19 @@ class AgendamentoServiceTest {
     }
 
     @Test
+    void administradorListaAgendamentosDeTodosOsUsuarios() throws Exception {
+        when(repository.findAll()).thenReturn(List.of(
+                model("a1", UID, "PENDENTE"),
+                model("a2", OTHER_UID, "PENDENTE")));
+
+        List<AgendamentoResponseDTO> response = service.listar(ADMIN_UID);
+
+        assertEquals(2, response.size());
+        assertEquals(List.of(UID, OTHER_UID), response.stream().map(AgendamentoResponseDTO::usuarioId).toList());
+        verify(repository).findAll();
+    }
+
+    @Test
     void clienteNaoPodeConsultarAgendamentoDeOutraPessoa() throws Exception {
         when(repository.findById("a1")).thenReturn(Optional.of(model("a1", OTHER_UID, "PENDENTE")));
 

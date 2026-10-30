@@ -168,7 +168,7 @@ inicial é `PENDENTE` e os timestamps são preenchidos pelo servidor.
 | Método | Caminho | Descrição | Sucesso |
 | --- | --- | --- | --- |
 | `POST` | `/agendamentos` | Cria uma solicitação para animal próprio | `201 Created` |
-| `GET` | `/agendamentos` | Lista somente os agendamentos do usuário autenticado | `200 OK` |
+| `GET` | `/agendamentos` | Lista os agendamentos do usuário; UID administrativo lista todos | `200 OK` |
 | `GET` | `/agendamentos/{id}` | Consulta um agendamento próprio; UID administrativo pode consultar qualquer um | `200 OK` |
 | `PATCH` | `/agendamentos/{id}/status` | Admin aprova ou rejeita um agendamento pendente | `200 OK` |
 
@@ -211,8 +211,9 @@ Resposta `201` (datas de auditoria são exemplos):
 ```
 
 `GET /agendamentos` retorna uma lista com essa mesma estrutura, ordenada por data,
-horário e criação. `GET /agendamentos/{id}` retorna um objeto; para clientes comuns,
-um ID de outro usuário e um ID inexistente retornam ambos `404`.
+horário e criação. Para clientes comuns, inclui somente seus agendamentos; para UIDs
+configurados como administradores, inclui todos. `GET /agendamentos/{id}` retorna um
+objeto; para clientes comuns, um ID de outro usuário e um ID inexistente retornam ambos `404`.
 
 Para atualizar o status, o administrador autenticado envia somente:
 

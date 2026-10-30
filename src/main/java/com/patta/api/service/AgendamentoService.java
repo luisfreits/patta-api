@@ -65,7 +65,10 @@ public class AgendamentoService {
 
     public List<AgendamentoResponseDTO> listar(String uid)
             throws ExecutionException, InterruptedException {
-        return agendamentoRepository.findByUsuarioId(uid).stream().map(this::toResponse).toList();
+        List<AgendamentoModel> agendamentos = isAdministrador(uid)
+                ? agendamentoRepository.findAll()
+                : agendamentoRepository.findByUsuarioId(uid);
+        return agendamentos.stream().map(this::toResponse).toList();
     }
 
     public AgendamentoResponseDTO buscar(String uid, String id)

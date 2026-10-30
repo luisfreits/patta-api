@@ -23,6 +23,10 @@ public class AgendamentoRepository {
     private static final String COLECAO = "agendamentos";
     private static final String CAMPO_USUARIO_ID = "usuarioId";
     private static final int LIMITE_LOTE = 500;
+    private static final Comparator<AgendamentoModel> ORDENACAO = Comparator
+            .comparing(AgendamentoModel::getData, Comparator.nullsLast(Comparator.naturalOrder()))
+            .thenComparing(AgendamentoModel::getHorario, Comparator.nullsLast(Comparator.naturalOrder()))
+            .thenComparing(AgendamentoModel::getCriadoEm, Comparator.nullsLast(Comparator.reverseOrder()));
 
     private final Firestore firestore;
 
@@ -46,12 +50,16 @@ public class AgendamentoRepository {
         return agendamentos().whereEqualTo(CAMPO_USUARIO_ID, usuarioId).get().get().getDocuments().stream()
                 .map(this::toModel)
                 .filter(Objects::nonNull)
-                .sorted(Comparator.comparing(AgendamentoModel::getData,
-                                Comparator.nullsLast(Comparator.naturalOrder()))
-                        .thenComparing(AgendamentoModel::getHorario,
-                                Comparator.nullsLast(Comparator.naturalOrder()))
-                        .thenComparing(AgendamentoModel::getCriadoEm,
-                                Comparator.nullsLast(Comparator.reverseOrder())))
+                .sorted(ORDENACAO)
+                .toList();
+    }
+
+    public List<AgendamentoModel> findAll()
+            throws ExecutionException, InterruptedException {
+        return agendamentos().get().get().getDocuments().stream()
+                .map(this::toModel)
+                .filter(Objects::nonNull)
+                .sorted(ORDENACAO)
                 .toList();
     }
 
