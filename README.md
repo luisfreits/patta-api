@@ -13,6 +13,20 @@ autoridades do Spring Security; operações administrativas verificam a autoriza
 backend, independentemente do que a interface web mostrar. Nunca aceite o papel enviado
 pelo cliente como fonte de autorização.
 
+### Consultas do painel administrativo
+
+Com um token de uma conta cujo UID está em `ADMIN_UIDS`, o painel pode consultar os
+perfis cadastrados e os animais de todos os usuários:
+
+| Método | Caminho | Descrição | Sucesso |
+| --- | --- | --- | --- |
+| `GET` | `/admin/usuarios` | Lista os perfis cadastrados, sem dados de autenticação | `200 OK` |
+| `GET` | `/admin/animais` | Lista animais e inclui `userId` para identificar o dono | `200 OK` |
+| `GET` | `/agendamentos` | Lista todos os agendamentos para administrador | `200 OK` |
+
+As rotas `/admin/**` retornam `403` para usuários comuns. As listagens mostram o estado
+atual dos dados; não constituem um histórico cronológico de alterações.
+
 ## Cadastro e verificação de e-mail
 
 O cadastro é criado no Firebase Authentication com `emailVerified=false`. O perfil é

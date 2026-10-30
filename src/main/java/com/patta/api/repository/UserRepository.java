@@ -7,6 +7,9 @@ import com.patta.api.model.UserModel;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 
@@ -50,6 +53,23 @@ public class UserRepository {
             usuario.setId(documento.getId());
         }
         return Optional.ofNullable(usuario);
+    }
+
+    /** Lista os perfis cadastrados, ordenados por nome e UID. */
+    public List<UserModel> findAll() throws ExecutionException, InterruptedException {
+        return usuarios().get().get().getDocuments().stream()
+                .map(documento -> {
+                    UserModel usuario = documento.toObject(UserModel.class);
+                    if (usuario != null) {
+                        usuario.setId(documento.getId());
+                    }
+                    return usuario;
+                })
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparing(
+                                UserModel::getNome, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
+                        .thenComparing(UserModel::getId, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
     }
 
     /** Apaga o documento do usuário. A conta no Firebase Auth é removida pelo UserService. */

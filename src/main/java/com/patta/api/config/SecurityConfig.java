@@ -59,6 +59,7 @@ public class SecurityConfig {
                         .accessDeniedHandler((request, response, exception) ->
                                 RespostaErro.escrever(response, objectMapper, 403, "Acesso negado.")))
                 .authorizeHttpRequests(autorizacao -> autorizacao
+                        .requestMatchers("/admin/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/agendamentos/*/status").hasRole("ADMIN")
                         .requestMatchers(RotasPublicas.ROTAS_AUTENTICADAS).authenticated()
                         .requestMatchers(RotasPublicas.PADROES).permitAll()

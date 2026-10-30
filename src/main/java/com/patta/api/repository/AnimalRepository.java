@@ -13,6 +13,7 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Comparator;
 import java.util.concurrent.ExecutionException;
 
 /**
@@ -52,6 +53,18 @@ public class AnimalRepository {
         return consultarPorUserId(userId).stream()
                 .map(this::toModel)
                 .filter(Objects::nonNull)
+                .toList();
+    }
+
+    /** Lista os animais de todos os usuários para consultas administrativas. */
+    public List<AnimalModel> findAll() throws ExecutionException, InterruptedException {
+        return animais().get().get().getDocuments().stream()
+                .map(this::toModel)
+                .filter(Objects::nonNull)
+                .sorted(Comparator
+                        .comparing(AnimalModel::getUserId, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(AnimalModel::getNome, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
+                        .thenComparing(AnimalModel::getId, Comparator.nullsLast(Comparator.naturalOrder())))
                 .toList();
     }
 
