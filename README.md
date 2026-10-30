@@ -23,9 +23,12 @@ perfis cadastrados e os animais de todos os usuários:
 | `GET` | `/admin/usuarios` | Lista os perfis cadastrados, sem dados de autenticação | `200 OK` |
 | `GET` | `/admin/animais` | Lista animais e inclui `userId` para identificar o dono | `200 OK` |
 | `GET` | `/admin/agendamentos` | Lista todos os agendamentos para o painel administrativo | `200 OK` |
+| `POST` | `/admin/agendamentos` | Cria agendamento para um cliente e pet selecionados | `201 Created` |
 
 As rotas `/admin/**` retornam `403` para usuários comuns. As listagens mostram o estado
-atual dos dados; não constituem um histórico cronológico de alterações.
+atual dos dados; não constituem um histórico cronológico de alterações. Para criar um
+agendamento, envie `usuarioId` e os campos de um agendamento dentro da propriedade
+`agendamento`. O backend valida que o pet selecionado pertence ao cliente informado.
 
 ## Cadastro e verificação de e-mail
 

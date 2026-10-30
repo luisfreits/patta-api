@@ -39,6 +39,19 @@ public class AgendamentoService {
     public AgendamentoResponseDTO criar(String uid, AgendamentoRequestDTO request)
             throws ExecutionException, InterruptedException {
         animalService.buscar(uid, request.animalId());
+        return criarParaDono(uid, request);
+    }
+
+    public AgendamentoResponseDTO criarParaUsuario(String administradorUid, String usuarioUid,
+                                                    AgendamentoRequestDTO request)
+            throws ExecutionException, InterruptedException {
+        exigirAdministrador(administradorUid);
+        animalService.buscar(usuarioUid, request.animalId());
+        return criarParaDono(usuarioUid, request);
+    }
+
+    private AgendamentoResponseDTO criarParaDono(String uid, AgendamentoRequestDTO request)
+            throws ExecutionException, InterruptedException {
         String servico = request.servico().trim().toLowerCase(Locale.ROOT);
         if (!SERVICOS_PERMITIDOS.contains(servico)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "O serviço solicitado não é válido.");

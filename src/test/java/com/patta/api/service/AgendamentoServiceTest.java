@@ -72,6 +72,31 @@ class AgendamentoServiceTest {
     }
 
     @Test
+    void administradorPodeCriarAgendamentoParaPetDoCliente() throws Exception {
+        when(animalService.buscar(UID, "animal-1")).thenReturn(animalResponse("animal-1"));
+        when(repository.save(any(AgendamentoModel.class))).thenAnswer(invocation -> {
+            AgendamentoModel model = invocation.getArgument(0);
+            model.setId("appointment-admin");
+            return model;
+        });
+
+        AgendamentoResponseDTO response = service.criarParaUsuario(ADMIN_UID, UID, request("animal-1", "consulta"));
+
+        assertEquals(UID, response.usuarioId());
+        assertEquals("appointment-admin", response.id());
+        verify(animalService).buscar(UID, "animal-1");
+    }
+
+    @Test
+    void usuarioComumNaoPodeCriarAgendamentoParaOutraPessoa() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> service.criarParaUsuario(UID, OTHER_UID, request("animal-1", "consulta")));
+
+        assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
+        verifyNoInteractions(animalService, repository);
+    }
+
+    @Test
     void listaUsandoUidAutenticadoComoUnicoFiltro() throws Exception {
         when(repository.findByUsuarioId(UID)).thenReturn(List.of(model("a1", UID, "PENDENTE")));
 

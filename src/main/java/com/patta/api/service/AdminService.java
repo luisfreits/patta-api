@@ -1,6 +1,7 @@
 package com.patta.api.service;
 
 import com.patta.api.dto.AdminAnimalResponseDTO;
+import com.patta.api.dto.AdminAgendamentoRequestDTO;
 import com.patta.api.dto.AgendamentoResponseDTO;
 import com.patta.api.dto.UserResponseDTO;
 import com.patta.api.model.AnimalModel;
@@ -44,6 +45,14 @@ public class AdminService {
             throws ExecutionException, InterruptedException {
         exigirAdministrador(uid);
         return agendamentoService.listarTodos(uid);
+    }
+
+    public AgendamentoResponseDTO criarAgendamento(String uid, AdminAgendamentoRequestDTO request)
+            throws ExecutionException, InterruptedException {
+        exigirAdministrador(uid);
+        userRepository.findById(request.usuarioId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuário não encontrado."));
+        return agendamentoService.criarParaUsuario(uid, request.usuarioId(), request.agendamento());
     }
 
     private void exigirAdministrador(String uid) {
