@@ -1,6 +1,7 @@
 package com.patta.api.service;
 
 import com.patta.api.dto.AdminAnimalResponseDTO;
+import com.patta.api.dto.AgendamentoResponseDTO;
 import com.patta.api.dto.UserResponseDTO;
 import com.patta.api.model.AnimalModel;
 import com.patta.api.model.UserModel;
@@ -21,6 +22,7 @@ public class AdminService {
     private final UserRepository userRepository;
     private final AnimalRepository animalRepository;
     private final PapelUsuarioService papelUsuarioService;
+    private final AgendamentoService agendamentoService;
 
     public List<UserResponseDTO> listarUsuarios(String uid)
             throws ExecutionException, InterruptedException {
@@ -36,6 +38,12 @@ public class AdminService {
         return animalRepository.findAll().stream()
                 .map(this::toAnimalResponse)
                 .toList();
+    }
+
+    public List<AgendamentoResponseDTO> listarAgendamentos(String uid)
+            throws ExecutionException, InterruptedException {
+        exigirAdministrador(uid);
+        return agendamentoService.listarTodos(uid);
     }
 
     private void exigirAdministrador(String uid) {

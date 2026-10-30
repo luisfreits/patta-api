@@ -22,7 +22,7 @@ perfis cadastrados e os animais de todos os usuários:
 | --- | --- | --- | --- |
 | `GET` | `/admin/usuarios` | Lista os perfis cadastrados, sem dados de autenticação | `200 OK` |
 | `GET` | `/admin/animais` | Lista animais e inclui `userId` para identificar o dono | `200 OK` |
-| `GET` | `/agendamentos` | Lista todos os agendamentos para administrador | `200 OK` |
+| `GET` | `/admin/agendamentos` | Lista todos os agendamentos para o painel administrativo | `200 OK` |
 
 As rotas `/admin/**` retornam `403` para usuários comuns. As listagens mostram o estado
 atual dos dados; não constituem um histórico cronológico de alterações.
@@ -183,6 +183,7 @@ inicial é `PENDENTE` e os timestamps são preenchidos pelo servidor.
 | --- | --- | --- | --- |
 | `POST` | `/agendamentos` | Cria uma solicitação para animal próprio | `201 Created` |
 | `GET` | `/agendamentos` | Lista os agendamentos do usuário; UID administrativo lista todos | `200 OK` |
+| `GET` | `/admin/agendamentos` | Lista todos os agendamentos; exclusivo para administradores | `200 OK` |
 | `GET` | `/agendamentos/{id}` | Consulta um agendamento próprio; UID administrativo pode consultar qualquer um | `200 OK` |
 | `PATCH` | `/agendamentos/{id}/status` | Admin aprova ou rejeita um agendamento pendente | `200 OK` |
 

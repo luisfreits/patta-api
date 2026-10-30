@@ -1,6 +1,7 @@
 package com.patta.api.controller;
 
 import com.patta.api.dto.AdminAnimalResponseDTO;
+import com.patta.api.dto.AgendamentoResponseDTO;
 import com.patta.api.dto.UserResponseDTO;
 import com.patta.api.service.AdminService;
 import lombok.RequiredArgsConstructor;
@@ -29,5 +30,11 @@ public class AdminController {
     public List<AdminAnimalResponseDTO> listarAnimais(@AuthenticationPrincipal String uid)
             throws ExecutionException, InterruptedException {
         return adminService.listarAnimais(uid);
+    }
+
+    @GetMapping("/agendamentos")
+    public List<AgendamentoResponseDTO> listarAgendamentos(@AuthenticationPrincipal String uid)
+            throws ExecutionException, InterruptedException {
+        return adminService.listarAgendamentos(uid);
     }
 }

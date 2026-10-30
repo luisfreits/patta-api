@@ -24,8 +24,9 @@ class AdminServiceTest {
 
     private final UserRepository userRepository = mock(UserRepository.class);
     private final AnimalRepository animalRepository = mock(AnimalRepository.class);
+    private final AgendamentoService agendamentoService = mock(AgendamentoService.class);
     private final AdminService service = new AdminService(
-            userRepository, animalRepository, new PapelUsuarioService(ADMIN_UID));
+            userRepository, animalRepository, new PapelUsuarioService(ADMIN_UID), agendamentoService);
 
     @Test
     void administradorPodeListarUsuarios() throws Exception {
@@ -59,5 +60,23 @@ class AdminServiceTest {
 
         assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
         verifyNoInteractions(userRepository, animalRepository);
+    }
+
+    @Test
+    void usuarioComumNaoPodeListarAgendamentosAdministrativos() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> service.listarAgendamentos(USER_UID));
+
+        assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
+        verifyNoInteractions(agendamentoService);
+    }
+
+    @Test
+    void administradorPodeConsultarListagemExplicitaDeAgendamentos() throws Exception {
+        when(agendamentoService.listarTodos(ADMIN_UID)).thenReturn(List.of());
+
+        assertEquals(List.of(), service.listarAgendamentos(ADMIN_UID));
+
+        verify(agendamentoService).listarTodos(ADMIN_UID);
     }
 }
