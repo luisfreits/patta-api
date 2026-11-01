@@ -6,7 +6,6 @@ import com.google.cloud.firestore.DocumentSnapshot;
 import com.google.cloud.firestore.Firestore;
 import com.google.cloud.firestore.QueryDocumentSnapshot;
 import com.google.cloud.firestore.Query;
-import com.google.cloud.firestore.Transaction;
 import com.google.cloud.firestore.WriteBatch;
 import com.patta.api.model.AgendamentoModel;
 import lombok.RequiredArgsConstructor;

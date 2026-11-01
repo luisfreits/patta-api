@@ -3,7 +3,6 @@ package com.patta.api.service;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.UserRecord;
-import com.google.firebase.auth.UserRecord;
 import com.patta.api.dto.LoginRequestDTO;
 import com.patta.api.dto.LoginResponseDTO;
 import org.springframework.beans.factory.annotation.Value;
