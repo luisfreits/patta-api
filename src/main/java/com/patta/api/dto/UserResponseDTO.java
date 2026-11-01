@@ -10,5 +10,6 @@ public record UserResponseDTO(
         String id,        // uid do Firebase
         String nome,
         String email,
-        String telefone
+        String telefone,
+        String fotoPerfil
 ) {}

@@ -98,6 +98,9 @@ public class AgendamentoService {
                 .build();
         try {
             return toResponse(agendamentoRepository.saveIfAvailable(agendamento, disponibilidade.getCapacidade()));
+        } catch (AgendamentoRepository.AgendamentoDuplicadoException exception) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Este pet já possui um agendamento ativo para o mesmo serviço, data e horário.", exception);
         } catch (AgendamentoRepository.ConflitoReservaException exception) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "O horário ou a capacidade de hospedagem não está mais disponível.", exception);

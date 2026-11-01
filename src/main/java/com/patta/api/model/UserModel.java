@@ -21,8 +21,11 @@ import lombok.ToString;
 @AllArgsConstructor    // Necessário para o @Builder funcionar junto com o construtor vazio
 public class UserModel {
 
+    public static final String FOTO_PERFIL_PADRAO = "/user/img/novo_usuario_padrao.jpeg";
+
     private String id;        // uid do Firebase Authentication, também o id do documento
     private String nome;
     private String email;     // Normalizado em minúsculas no cadastro
     private String telefone;
+    private String fotoPerfil;
 }

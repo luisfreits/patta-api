@@ -13,7 +13,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -42,13 +41,6 @@ public class AdminController {
                                                  @Valid @RequestBody UserUpdateDTO request)
             throws ExecutionException, InterruptedException {
         return adminService.atualizarUsuario(uid, usuarioUid, request);
-    }
-
-    @DeleteMapping("/usuarios/{usuarioUid}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deletarUsuario(@AuthenticationPrincipal String uid, @PathVariable String usuarioUid)
-            throws ExecutionException, InterruptedException {
-        adminService.deletarUsuario(uid, usuarioUid);
     }
 
     @GetMapping("/animais")

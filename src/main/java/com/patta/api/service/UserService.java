@@ -179,6 +179,7 @@ public class UserService {
                 .nome(usuario.getNome())
                 .email(usuario.getEmail())
                 .telefone(usuario.getTelefone())
+                .fotoPerfil(usuario.getFotoPerfil())
                 .build();
     }
 
@@ -192,12 +193,6 @@ public class UserService {
      * apagados, então o erro 502 informa que a conta precisa ser removida novamente.
      */
     public void deletarMinhaConta(String uid) throws ExecutionException, InterruptedException {
-        deletarConta(uid);
-    }
-
-    public void deletarContaComoAdministrador(String administradorUid, String uid)
-            throws ExecutionException, InterruptedException {
-        exigirAdministrador(administradorUid);
         deletarConta(uid);
     }
 
@@ -237,6 +232,7 @@ public class UserService {
                 .nome(usuario.getNome())
                 .email(usuario.getEmail())
                 .telefone(usuario.getTelefone())
+                .fotoPerfil(usuario.getFotoPerfil())
                 .build();
     }
 }

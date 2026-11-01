@@ -78,6 +78,22 @@ class AgendamentoServiceTest {
     }
 
     @Test
+    void impedeAgendamentoDuplicadoParaMesmoPetServicoDataEHorario() throws Exception {
+        when(animalService.buscar(UID, "animal-1")).thenReturn(animalResponse("animal-1"));
+        when(disponibilidadeService.validarSlot(anyString(), any(), any())).thenReturn(disponibilidade());
+        when(repository.saveIfAvailable(any(AgendamentoModel.class), anyInt()))
+                .thenThrow(new AgendamentoRepository.AgendamentoDuplicadoException());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> service.criar(UID, request("animal-1", "consulta")));
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        assertEquals(
+                "Este pet já possui um agendamento ativo para o mesmo serviço, data e horário.",
+                exception.getReason());
+    }
+
+    @Test
     void administradorPodeCriarAgendamentoParaPetDoCliente() throws Exception {
         when(animalService.buscar(UID, "animal-1")).thenReturn(animalResponse("animal-1"));
         when(disponibilidadeService.validarSlot(anyString(), any(), any())).thenReturn(disponibilidade());

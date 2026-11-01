@@ -42,12 +42,6 @@ public class AdminService {
         return buscarUsuarioAtualizado(administradorUid, usuarioUid);
     }
 
-    public void deletarUsuario(String administradorUid, String usuarioUid)
-            throws ExecutionException, InterruptedException {
-        exigirAdministrador(administradorUid);
-        userService.deletarContaComoAdministrador(administradorUid, usuarioUid);
-    }
-
     public List<AdminAnimalResponseDTO> listarAnimais(String uid)
             throws ExecutionException, InterruptedException {
         exigirAdministrador(uid);
@@ -100,6 +94,7 @@ public class AdminService {
     private AdminUserResponseDTO toUserResponse(UserModel usuario) {
         return new AdminUserResponseDTO(
                 usuario.getId(), usuario.getNome(), usuario.getEmail(), usuario.getTelefone(),
+                usuario.getFotoPerfil(),
                 papelUsuarioService.buscarPapel(usuario.getId()));
     }
 

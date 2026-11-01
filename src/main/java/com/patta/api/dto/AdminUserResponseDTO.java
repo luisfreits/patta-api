@@ -5,5 +5,6 @@ public record AdminUserResponseDTO(
         String nome,
         String email,
         String telefone,
+        String fotoPerfil,
         String role
 ) {}

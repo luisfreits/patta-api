@@ -42,6 +42,7 @@ public class CadastroService {
                 .nome(dados.nome().trim())
                 .email(email)
                 .telefone(dados.telefone().trim())
+                .fotoPerfil(UserModel.FOTO_PERFIL_PADRAO)
                 .build();
         try {
             userRepository.save(usuario);

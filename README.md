@@ -25,7 +25,6 @@ perfis cadastrados e os animais de todos os usuários:
 | --- | --- | --- | --- |
 | `GET` | `/admin/usuarios` | Lista os perfis e seus papéis, sem dados de autenticação | `200 OK` |
 | `PUT` | `/admin/usuarios/{usuarioUid}` | Atualiza nome, telefone e e-mail de qualquer perfil | `200 OK` |
-| `DELETE` | `/admin/usuarios/{usuarioUid}` | Remove conta e dados associados | `204 No Content` |
 | `GET` | `/admin/animais` | Lista animais e inclui `userId` para identificar o dono | `200 OK` |
 | `GET` | `/admin/agendamentos` | Lista todos os agendamentos para o painel administrativo | `200 OK` |
 | `POST` | `/admin/agendamentos` | Cria agendamento para um cliente e pet selecionados | `201 Created` |
@@ -38,7 +37,8 @@ agendamento, envie `usuarioId` e os campos de um agendamento dentro da proprieda
 ## Cadastro e verificação de e-mail
 
 O cadastro é criado no Firebase Authentication com `emailVerified=false`. O perfil é
-gravado em `users/{uid}` no Firestore com o mesmo UID. A API solicita o envio da
+gravado em `users/{uid}` no Firestore com o mesmo UID, incluindo a referência da imagem
+padrão de perfil `/user/img/novo_usuario_padrao.jpeg`. A API solicita o envio da
 verificação ao Firebase Authentication; não é necessário SMTP.
 
 1. Envie os dados cadastrais para `POST /cadastro/solicitar`. A resposta `202` confirma
@@ -223,6 +223,10 @@ animal pertencente ao usuário autenticado. `observacoes` é opcional, com até 
 caracteres; data, horário e animal são obrigatórios.
 O horário precisa estar configurado e disponível. Para `hospedagem`, envie também
 `dataSaidaPrevista`, posterior à data de entrada.
+Não é permitido criar mais de um agendamento ativo para o mesmo pet, serviço, data e
+horário. Agendamentos rejeitados ou cancelados não impedem uma nova solicitação.
+Agendamentos em outra data ou horário continuam permitidos; o sistema não mantém
+informações de cobrança/pagamento.
 
 ```http
 POST /agendamentos

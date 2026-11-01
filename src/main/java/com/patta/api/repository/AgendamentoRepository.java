@@ -58,6 +58,9 @@ public class AgendamentoRepository {
                 int reservasConflitantes = 0;
                 for (QueryDocumentSnapshot existente : existentes) {
                     AgendamentoModel reserva = toModel(existente);
+                    if (reserva != null && mesmoAgendamento(agendamento, reserva)) {
+                        throw new AgendamentoDuplicadoException();
+                    }
                     if (reserva != null && reservaAtiva(reserva) && conflita(agendamento, reserva)) {
                         reservasConflitantes++;
                     }
@@ -73,6 +76,7 @@ public class AgendamentoRepository {
                 return null;
             }).get();
         } catch (ExecutionException exception) {
+            if (exception.getCause() instanceof AgendamentoDuplicadoException duplicado) throw duplicado;
             if (exception.getCause() instanceof ConflitoReservaException conflito) throw conflito;
             throw exception;
         }
@@ -139,6 +143,16 @@ public class AgendamentoRepository {
                 && agendamento.getCheckOutEm() == null;
     }
 
+    private boolean mesmoAgendamento(AgendamentoModel novo, AgendamentoModel existente) {
+        if ("REJEITADO".equals(existente.getStatus()) || "CANCELADO".equals(existente.getStatus())) {
+            return false;
+        }
+        return Objects.equals(novo.getAnimalId(), existente.getAnimalId())
+                && Objects.equals(novo.getServico(), existente.getServico())
+                && Objects.equals(LocalDate.parse(novo.getData()), LocalDate.parse(existente.getData()))
+                && Objects.equals(LocalTime.parse(novo.getHorario()), LocalTime.parse(existente.getHorario()));
+    }
+
     private boolean conflita(AgendamentoModel nova, AgendamentoModel existente) {
         if ("hospedagem".equals(nova.getServico())) {
             LocalDate inicioNovo = LocalDate.parse(nova.getData());
@@ -161,5 +175,8 @@ public class AgendamentoRepository {
     }
 
     public static final class ConflitoReservaException extends RuntimeException {
+    }
+
+    public static final class AgendamentoDuplicadoException extends RuntimeException {
     }
 }
