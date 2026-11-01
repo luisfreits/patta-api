@@ -21,8 +21,14 @@ public class AgendamentoModel {
     private String servico;
     private String data;
     private String horario;
+    private String dataSaidaPrevista;
+    private Integer duracaoMinutos;
     private String status;
     private String observacoes;
+    private Date checkInEm;
+    private String checkInPor;
+    private Date checkOutEm;
+    private String checkOutPor;
     private Date criadoEm;
     private Date atualizadoEm;
 }

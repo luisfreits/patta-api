@@ -24,5 +24,12 @@ public record AgendamentoRequestDTO(
         LocalTime horario,
 
         @Size(max = 1000, message = "As observações devem ter no máximo 1000 caracteres.")
-        String observacoes
-) {}
+        String observacoes,
+
+        LocalDate dataSaidaPrevista
+) {
+    public AgendamentoRequestDTO(String animalId, String servico, LocalDate data,
+                                 LocalTime horario, String observacoes) {
+        this(animalId, servico, data, horario, observacoes, null);
+    }
+}

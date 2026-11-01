@@ -27,13 +27,16 @@ public class AgendamentoService {
     private final AgendamentoRepository agendamentoRepository;
     private final AnimalService animalService;
     private final PapelUsuarioService papelUsuarioService;
+    private final DisponibilidadeService disponibilidadeService;
 
     public AgendamentoService(AgendamentoRepository agendamentoRepository,
                               AnimalService animalService,
-                              PapelUsuarioService papelUsuarioService) {
+                              PapelUsuarioService papelUsuarioService,
+                              DisponibilidadeService disponibilidadeService) {
         this.agendamentoRepository = agendamentoRepository;
         this.animalService = animalService;
         this.papelUsuarioService = papelUsuarioService;
+        this.disponibilidadeService = disponibilidadeService;
     }
 
     public AgendamentoResponseDTO criar(String uid, AgendamentoRequestDTO request)
@@ -60,6 +63,22 @@ public class AgendamentoService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A data não pode estar no passado.");
         }
         validarHorario(request.horario());
+        if (request.data().isEqual(LocalDate.now()) && !request.horario().isAfter(LocalTime.now())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "O horário do agendamento não pode estar no passado.");
+        }
+        if ("hospedagem".equals(servico)) {
+            if (request.dataSaidaPrevista() == null
+                    || !request.dataSaidaPrevista().isAfter(request.data())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "A data de saída prevista deve ser posterior à data de entrada.");
+            }
+        } else if (request.dataSaidaPrevista() != null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A data de saída prevista só se aplica a hospedagens.");
+        }
+
+        var disponibilidade = disponibilidadeService.validarSlot(servico, request.data(), request.horario());
 
         Instant agora = Instant.now();
         AgendamentoModel agendamento = AgendamentoModel.builder()
@@ -68,12 +87,21 @@ public class AgendamentoService {
                 .servico(servico)
                 .data(request.data().toString())
                 .horario(request.horario().toString())
+                .dataSaidaPrevista(request.dataSaidaPrevista() == null
+                        ? null
+                        : request.dataSaidaPrevista().toString())
+                .duracaoMinutos(disponibilidade.getDuracaoMinutos())
                 .status(AgendamentoStatus.PENDENTE.name())
                 .observacoes(normalizarObservacoes(request.observacoes()))
                 .criadoEm(Date.from(agora))
                 .atualizadoEm(Date.from(agora))
                 .build();
-        return toResponse(agendamentoRepository.save(agendamento));
+        try {
+            return toResponse(agendamentoRepository.saveIfAvailable(agendamento, disponibilidade.getCapacidade()));
+        } catch (AgendamentoRepository.ConflitoReservaException exception) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "O horário ou a capacidade de hospedagem não está mais disponível.", exception);
+        }
     }
 
     public List<AgendamentoResponseDTO> listar(String uid)
@@ -89,13 +117,25 @@ public class AgendamentoService {
         return agendamentoRepository.findAll().stream().map(this::toResponse).toList();
     }
 
+    public List<AgendamentoResponseDTO> listarParaEquipe(String uid)
+            throws ExecutionException, InterruptedException {
+        exigirEquipe(uid);
+        return agendamentoRepository.findAll().stream().map(this::toResponse).toList();
+    }
+
     public AgendamentoResponseDTO buscar(String uid, String id)
             throws ExecutionException, InterruptedException {
         AgendamentoModel agendamento = buscarExistente(id);
-        if (!uid.equals(agendamento.getUsuarioId()) && !isAdministrador(uid)) {
+        if (!uid.equals(agendamento.getUsuarioId()) && !papelUsuarioService.ehAdministrador(uid)) {
             throw naoEncontrado();
         }
         return toResponse(agendamento);
+    }
+
+    public AgendamentoResponseDTO buscarParaEquipe(String uid, String id)
+            throws ExecutionException, InterruptedException {
+        exigirEquipe(uid);
+        return toResponse(buscarExistente(id));
     }
 
     public AgendamentoResponseDTO alterarStatus(String uid, String id, AgendamentoStatusRequestDTO request)
@@ -116,6 +156,54 @@ public class AgendamentoService {
         return toResponse(agendamentoRepository.save(agendamento));
     }
 
+    public AgendamentoResponseDTO alterarDescricao(String uid, String id, String descricao)
+            throws ExecutionException, InterruptedException {
+        AgendamentoModel agendamento = buscarExistente(id);
+            if (!uid.equals(agendamento.getUsuarioId()) && !papelUsuarioService.ehAdministrador(uid)) throw naoEncontrado();
+        if (agendamento.getCheckInEm() != null
+                || AgendamentoStatus.REJEITADO.name().equals(agendamento.getStatus())
+                || AgendamentoStatus.CANCELADO.name().equals(agendamento.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A descrição não pode ser alterada após o check-in ou encerramento do agendamento.");
+        }
+        agendamento.setObservacoes(normalizarObservacoes(descricao));
+        agendamento.setAtualizadoEm(Date.from(Instant.now()));
+        return toResponse(agendamentoRepository.save(agendamento));
+    }
+
+    public AgendamentoResponseDTO marcarCheckIn(String uid, String id)
+            throws ExecutionException, InterruptedException {
+        exigirEquipe(uid);
+        AgendamentoModel agendamento = buscarExistente(id);
+        if (!AgendamentoStatus.APROVADO.name().equals(agendamento.getStatus())
+                || agendamento.getCheckInEm() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "O check-in exige um agendamento aprovado ainda não recebido.");
+        }
+        agendamento.setCheckInEm(Date.from(Instant.now()));
+        agendamento.setCheckInPor(uid);
+        agendamento.setAtualizadoEm(Date.from(Instant.now()));
+        return toResponse(agendamentoRepository.save(agendamento));
+    }
+
+    public AgendamentoResponseDTO marcarCheckOut(String uid, String id)
+            throws ExecutionException, InterruptedException {
+        exigirEquipe(uid);
+        AgendamentoModel agendamento = buscarExistente(id);
+        if (!"hospedagem".equals(agendamento.getServico())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "O check-out só se aplica a agendamentos de hospedagem.");
+        }
+        if (agendamento.getCheckInEm() == null || agendamento.getCheckOutEm() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "O check-out exige uma hospedagem com check-in realizado e ainda não encerrada.");
+        }
+        agendamento.setCheckOutEm(Date.from(Instant.now()));
+        agendamento.setCheckOutPor(uid);
+        agendamento.setAtualizadoEm(Date.from(Instant.now()));
+        return toResponse(agendamentoRepository.save(agendamento));
+    }
+
     private AgendamentoModel buscarExistente(String id) throws ExecutionException, InterruptedException {
         return agendamentoRepository.findById(id).orElseThrow(AgendamentoService::naoEncontrado);
     }
@@ -124,6 +212,13 @@ public class AgendamentoService {
         if (!isAdministrador(uid)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Somente administradores autorizados podem alterar o status.");
+        }
+    }
+
+    private void exigirEquipe(String uid) {
+        if (!papelUsuarioService.podeGerenciarAtendimento(uid)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Somente administradores ou profissionais autorizados podem registrar atendimento.");
         }
     }
 
@@ -154,8 +249,16 @@ public class AgendamentoService {
                 agendamento.getServico(),
                 LocalDate.parse(agendamento.getData()),
                 LocalTime.parse(agendamento.getHorario()),
+                agendamento.getDataSaidaPrevista() == null
+                        ? null
+                        : LocalDate.parse(agendamento.getDataSaidaPrevista()),
+                agendamento.getDuracaoMinutos(),
                 agendamento.getStatus(),
                 agendamento.getObservacoes(),
+                agendamento.getCheckInEm() == null ? null : agendamento.getCheckInEm().toInstant(),
+                agendamento.getCheckInPor(),
+                agendamento.getCheckOutEm() == null ? null : agendamento.getCheckOutEm().toInstant(),
+                agendamento.getCheckOutPor(),
                 agendamento.getCriadoEm().toInstant(),
                 agendamento.getAtualizadoEm().toInstant());
     }

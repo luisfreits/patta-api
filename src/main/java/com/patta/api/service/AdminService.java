@@ -2,8 +2,9 @@ package com.patta.api.service;
 
 import com.patta.api.dto.AdminAnimalResponseDTO;
 import com.patta.api.dto.AdminAgendamentoRequestDTO;
+import com.patta.api.dto.AdminUserResponseDTO;
 import com.patta.api.dto.AgendamentoResponseDTO;
-import com.patta.api.dto.UserResponseDTO;
+import com.patta.api.dto.UserUpdateDTO;
 import com.patta.api.model.AnimalModel;
 import com.patta.api.model.UserModel;
 import com.patta.api.repository.AnimalRepository;
@@ -24,13 +25,27 @@ public class AdminService {
     private final AnimalRepository animalRepository;
     private final PapelUsuarioService papelUsuarioService;
     private final AgendamentoService agendamentoService;
+    private final UserService userService;
 
-    public List<UserResponseDTO> listarUsuarios(String uid)
+    public List<AdminUserResponseDTO> listarUsuarios(String uid)
             throws ExecutionException, InterruptedException {
         exigirAdministrador(uid);
         return userRepository.findAll().stream()
                 .map(this::toUserResponse)
                 .toList();
+    }
+
+    public AdminUserResponseDTO atualizarUsuario(String administradorUid, String usuarioUid, UserUpdateDTO dados)
+            throws ExecutionException, InterruptedException {
+        exigirAdministrador(administradorUid);
+        userService.atualizarPerfilComoAdministrador(administradorUid, usuarioUid, dados);
+        return buscarUsuarioAtualizado(administradorUid, usuarioUid);
+    }
+
+    public void deletarUsuario(String administradorUid, String usuarioUid)
+            throws ExecutionException, InterruptedException {
+        exigirAdministrador(administradorUid);
+        userService.deletarContaComoAdministrador(administradorUid, usuarioUid);
     }
 
     public List<AdminAnimalResponseDTO> listarAnimais(String uid)
@@ -55,6 +70,18 @@ public class AdminService {
         return agendamentoService.criarParaUsuario(uid, request.usuarioId(), request.agendamento());
     }
 
+    public AgendamentoResponseDTO marcarCheckIn(String uid, String agendamentoId)
+            throws ExecutionException, InterruptedException {
+        exigirAdministrador(uid);
+        return agendamentoService.marcarCheckIn(uid, agendamentoId);
+    }
+
+    public AgendamentoResponseDTO marcarCheckOut(String uid, String agendamentoId)
+            throws ExecutionException, InterruptedException {
+        exigirAdministrador(uid);
+        return agendamentoService.marcarCheckOut(uid, agendamentoId);
+    }
+
     private void exigirAdministrador(String uid) {
         if (!papelUsuarioService.ehAdministrador(uid)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
@@ -62,13 +89,18 @@ public class AdminService {
         }
     }
 
-    private UserResponseDTO toUserResponse(UserModel usuario) {
-        return UserResponseDTO.builder()
-                .id(usuario.getId())
-                .nome(usuario.getNome())
-                .email(usuario.getEmail())
-                .telefone(usuario.getTelefone())
-                .build();
+    private AdminUserResponseDTO buscarUsuarioAtualizado(String administradorUid, String usuarioUid)
+            throws ExecutionException, InterruptedException {
+        exigirAdministrador(administradorUid);
+        UserModel usuario = userRepository.findById(usuarioUid)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuário não encontrado."));
+        return toUserResponse(usuario);
+    }
+
+    private AdminUserResponseDTO toUserResponse(UserModel usuario) {
+        return new AdminUserResponseDTO(
+                usuario.getId(), usuario.getNome(), usuario.getEmail(), usuario.getTelefone(),
+                papelUsuarioService.buscarPapel(usuario.getId()));
     }
 
     private AdminAnimalResponseDTO toAnimalResponse(AnimalModel animal) {

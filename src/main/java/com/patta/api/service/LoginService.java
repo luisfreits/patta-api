@@ -3,6 +3,7 @@ package com.patta.api.service;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.UserRecord;
+import com.google.firebase.auth.UserRecord;
 import com.patta.api.dto.LoginRequestDTO;
 import com.patta.api.dto.LoginResponseDTO;
 import org.springframework.beans.factory.annotation.Value;
@@ -120,6 +121,23 @@ public class LoginService {
             // Falha de rede, JSON malformado ou número inválido em expiresIn
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                     "Não foi possível concluir o login no Firebase.");
+        }
+    }
+
+    /** Confirma a senha atual e garante que as credenciais pertencem ao uid autenticado. */
+    public void validarSenhaAtual(String uid, String email, String senha) {
+        login(new LoginRequestDTO(email, senha));
+        try {
+            UserRecord usuario = firebaseAuth.getUserByEmail(email.trim().toLowerCase(Locale.ROOT));
+            if (!uid.equals(usuario.getUid())) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "A senha atual não confere.");
+            }
+        } catch (FirebaseAuthException exception) {
+            if (exception.getAuthErrorCode() == com.google.firebase.auth.AuthErrorCode.USER_NOT_FOUND) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "A senha atual não confere.");
+            }
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Não foi possível confirmar as credenciais no Firebase.");
         }
     }
 

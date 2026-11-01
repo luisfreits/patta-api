@@ -4,14 +4,17 @@ para rodar a api se usa o comando `.\mvnw.cmd spring-boot:run`
 
 Toda conta criada por `POST /cadastro/solicitar` é um usuário comum. A conta
 administradora deve ser autorizada por configuração de servidor: defina `ADMIN_UIDS`
-com o UID da conta no Firebase Authentication. Para várias contas, separe os UIDs por
-vírgula. Se a variável estiver vazia, todos os usuários terão papel `USER`.
+com o UID da conta no Firebase Authentication. Profissionais são autorizados
+separadamente por `PROFISSIONAL_UIDS`. Para várias contas, separe os UIDs por vírgula.
+Sem essas configurações, os usuários terão papel `USER`.
 
 `GET /auth/me` exige ID token válido e e-mail verificado e retorna o UID autenticado e
-o papel atribuído pelo servidor (`ADMIN` ou `USER`). O papel também é aplicado às
-autoridades do Spring Security; operações administrativas verificam a autorização no
-backend, independentemente do que a interface web mostrar. Nunca aceite o papel enviado
-pelo cliente como fonte de autorização.
+o papel atribuído pelo servidor (`ADMIN`, `PROFISSIONAL` ou `USER`). As permissões seguem
+a hierarquia `ADMIN > PROFISSIONAL > USER`: administradores herdam os acessos profissional
+e de usuário; profissionais herdam os acessos de usuário; usuários comuns não recebem
+permissões profissionais ou administrativas. Operações administrativas verificam a
+autorização no backend, independentemente do que a interface web mostrar. Nunca aceite
+o papel enviado pelo cliente como fonte de autorização.
 
 ### Consultas do painel administrativo
 
@@ -20,7 +23,9 @@ perfis cadastrados e os animais de todos os usuários:
 
 | Método | Caminho | Descrição | Sucesso |
 | --- | --- | --- | --- |
-| `GET` | `/admin/usuarios` | Lista os perfis cadastrados, sem dados de autenticação | `200 OK` |
+| `GET` | `/admin/usuarios` | Lista os perfis e seus papéis, sem dados de autenticação | `200 OK` |
+| `PUT` | `/admin/usuarios/{usuarioUid}` | Atualiza nome, telefone e e-mail de qualquer perfil | `200 OK` |
+| `DELETE` | `/admin/usuarios/{usuarioUid}` | Remove conta e dados associados | `204 No Content` |
 | `GET` | `/admin/animais` | Lista animais e inclui `userId` para identificar o dono | `200 OK` |
 | `GET` | `/admin/agendamentos` | Lista todos os agendamentos para o painel administrativo | `200 OK` |
 | `POST` | `/admin/agendamentos` | Cria agendamento para um cliente e pet selecionados | `201 Created` |
@@ -85,6 +90,20 @@ Variáveis da aplicação:
 - `CORS_ALLOWED_ORIGINS`: origens web autorizadas a chamar a API.
 
 O cadastro e a verificação não requerem servidor SMTP nem credenciais de e-mail.
+
+### Atualização do perfil e troca de e-mail
+
+`PUT /users/me` atualiza nome, telefone e e-mail da conta autenticada. O corpo requer
+`nome`, `telefone` e `email`; para trocar o endereço, também é obrigatório enviar
+`senhaAtual`. A API reautentica a senha atual, atualiza o e-mail no Firebase
+Authentication e no Firestore, marca o novo endereço como não verificado e envia um
+link de verificação. A sessão precisa ser refeita depois de confirmar o endereço.
+Se a atualização ou o envio do link falhar, a API tenta reverter as alterações.
+
+O envio do link de troca de e-mail usa SMTP. Configure `EMAIL_HOST`, `EMAIL_PORT`,
+`EMAIL_USER` e `EMAIL_PASSWORD` no backend; sem essas credenciais, a troca é revertida
+e a API informa que não foi possível enviar a confirmação. Nome e telefone não exigem
+SMTP nem a senha atual.
 
 ## API de animais
 
@@ -191,11 +210,19 @@ inicial é `PENDENTE` e os timestamps são preenchidos pelo servidor.
 | `GET` | `/admin/agendamentos` | Lista todos os agendamentos; exclusivo para administradores | `200 OK` |
 | `GET` | `/agendamentos/{id}` | Consulta um agendamento próprio; UID administrativo pode consultar qualquer um | `200 OK` |
 | `PATCH` | `/agendamentos/{id}/status` | Admin aprova ou rejeita um agendamento pendente | `200 OK` |
+| `PATCH` | `/agendamentos/{id}/descricao` | Tutor corrige a descrição do problema do próprio agendamento | `200 OK` |
+| `POST` | `/admin/agendamentos/{id}/check-in` | Registra a entrada/check-in de um agendamento aprovado | `200 OK` |
+| `POST` | `/admin/agendamentos/{id}/check-out` | Registra a saída/check-out de uma hospedagem | `200 OK` |
+| `GET` | `/profissional/agendamentos` | Profissionais veem dados mínimos dos agendamentos de usuários comuns; administradores veem os de todos os papéis | `200 OK` |
+| `POST` | `/profissional/agendamentos/{id}/check-in` | Profissional ou administrador registra check-in | `200 OK` |
+| `POST` | `/profissional/agendamentos/{id}/check-out` | Profissional ou administrador registra check-out de hospedagem | `200 OK` |
 
 O POST recebe datas ISO (`yyyy-MM-dd`) e horários (`HH:mm`). Os serviços aceitos são
 `consulta`, `vacina` e `hospedagem`, em minúsculas. `animalId` precisa identificar um
 animal pertencente ao usuário autenticado. `observacoes` é opcional, com até 1000
 caracteres; data, horário e animal são obrigatórios.
+O horário precisa estar configurado e disponível. Para `hospedagem`, envie também
+`dataSaidaPrevista`, posterior à data de entrada.
 
 ```http
 POST /agendamentos
@@ -209,7 +236,8 @@ Content-Type: application/json
   "servico": "consulta",
   "data": "2027-05-18",
   "horario": "10:30",
-  "observacoes": "Consulta de rotina"
+  "observacoes": "Consulta de rotina",
+  "dataSaidaPrevista": null
 }
 ```
 
@@ -223,8 +251,14 @@ Resposta `201` (datas de auditoria são exemplos):
   "servico": "consulta",
   "data": "2027-05-18",
   "horario": "10:30:00",
+  "dataSaidaPrevista": null,
+  "duracaoMinutos": 30,
   "status": "PENDENTE",
   "observacoes": "Consulta de rotina",
+  "checkInEm": null,
+  "checkInPor": null,
+  "checkOutEm": null,
+  "checkOutPor": null,
   "criadoEm": "2026-10-25T18:44:39Z",
   "atualizadoEm": "2026-10-25T18:44:39Z"
 }
@@ -251,6 +285,13 @@ Somente `PENDENTE -> APROVADO` e `PENDENTE -> REJEITADO` são permitidos. Usuár
 comuns recebem `403`; transições inválidas recebem `409`. `CANCELADO` está reservado
 no modelo, mas não há endpoint de cancelamento no MVP.
 
+O tutor pode corrigir `observacoes` com `PATCH /agendamentos/{id}/descricao` até o
+check-in, desde que o agendamento não tenha sido rejeitado/cancelado. O check-in é
+registrado por administrador ou profissional autorizado e exige status `APROVADO`; a
+resposta inclui o instante real em `checkInEm` e o UID do responsável em `checkInPor`.
+O check-out só existe para hospedagem, exige check-in e grava `checkOutEm` e
+`checkOutPor`.
+
 Erros usam o envelope geral `{ "status": 400, "mensagem": "...", "timestamp": "..." }`.
 Além dos erros usuais de token (`401`) e e-mail não verificado (`403`), os endpoints
 retornam `400` para payload/campos inválidos, `403` para falta de privilégio
@@ -259,16 +300,85 @@ transições de status inválidas. Falhas inesperadas de persistência retornam 
 
 ### Autorização administrativa
 
-Configure no servidor a variável `ADMIN_UIDS` como uma lista separada por vírgulas de
-UIDs Firebase confiáveis, por exemplo `ADMIN_UIDS=uid-admin-1,uid-admin-2`. Não existe
-valor administrativo padrão; sem configuração, nenhum usuário pode alterar status.
-O backend compara essa lista com o UID extraído do ID token validado. O frontend não
-pode conceder privilégios por parâmetro ou campo JSON.
+Configure no servidor `ADMIN_UIDS` e `PROFISSIONAL_UIDS` como listas separadas por
+vírgulas de UIDs Firebase confiáveis. As listas são independentes; se um UID estiver
+nas duas, prevalece `ADMIN`. Administradores podem acessar as rotas administrativas e profissionais;
+profissionais veem na agenda apenas nome do tutor, nome do pet, data/horário e se é
+hospedagem, além das ações permitidas para o atendimento. Usuários comuns não acessam
+rotas administrativas nem profissionais. O backend compara as listas
+com o UID extraído do ID token validado. O frontend não concede privilégios.
 
-O inventário real da coleção Firestore não foi lido nesta implementação. A API cria
-novos documentos com IDs gerados e não migra nem sobrescreve documentos preexistentes.
-Ao excluir uma conta em `DELETE /users/me`, seus agendamentos também são excluídos,
-junto com os animais e o perfil.
+## Disponibilidade, check-in e hospedagem
+
+O administrador configura uma janela de funcionamento para cada serviço e dia da
+semana. O dia usa o nome em inglês e caixa alta (`MONDAY` a `SUNDAY`). Durações são
+em minutos; cada intervalo gera slots consecutivos a partir do horário de início.
+Intervalos no mesmo dia não podem se sobrepor. A capacidade vale para cada slot e a
+API confere a reserva novamente em transação no Firestore para não aceitar duas
+solicitações concorrentes acima da capacidade.
+
+| Método | Caminho | Descrição |
+| --- | --- | --- |
+| `PUT` | `/admin/disponibilidade/{servico}/{diaSemana}` | Cria/substitui os horários, duração e capacidade |
+| `DELETE` | `/admin/disponibilidade/{servico}/{diaSemana}` | Fecha o serviço nesse dia |
+| `GET` | `/disponibilidade?servico=consulta&data=2027-05-18` | Lista slots e vagas disponíveis |
+
+Exemplo de configuração:
+
+```json
+{
+  "intervalos": [
+    { "inicio": "09:00", "fim": "12:00" },
+    { "inicio": "13:00", "fim": "17:00" }
+  ],
+  "duracaoMinutos": 30,
+  "capacidade": 1
+}
+```
+
+`GET /disponibilidade` exige autenticação e retorna `duracaoMinutos` e uma lista com
+horário, capacidade e vagas disponíveis. Para consulta e vacina, solicitações
+pendentes/aprovadas ocupam a capacidade quando seus períodos se sobrepõem. Para
+hospedagem, informe `dataSaidaPrevista`; a capacidade é ocupada para cada dia no
+intervalo `[data, dataSaidaPrevista)`, e a saída real é registrada no check-out.
+
+## Carteira vacinal e histórico clínico
+
+Os registros são salvos em coleções Firestore separadas. O tutor autenticado pode
+consultar somente os registros dos próprios animais; administradores e profissionais
+autorizados podem consultar e registrar dados clínicos ou de vacinação. Os campos de
+autoria e timestamps são preenchidos pelo servidor.
+
+| Método | Caminho | Descrição |
+| --- | --- | --- |
+| `GET` | `/animais/{animalId}/vacinas` | Consulta a carteira vacinal do próprio animal |
+| `GET` | `/animais/{animalId}/historico-clinico` | Consulta o histórico clínico do próprio animal |
+| `POST` | `/admin/animais/{animalId}/vacinas` | Registra vacina aplicada |
+| `GET` | `/admin/animais/{animalId}/vacinas` | Consulta a carteira para atendimento administrativo |
+| `POST` | `/admin/animais/{animalId}/historico-clinico` | Registra atendimento, queixa, diagnóstico e tratamento |
+| `GET` | `/admin/animais/{animalId}/historico-clinico` | Consulta o histórico para atendimento administrativo |
+| `POST` | `/profissional/agendamentos/{id}/historico-clinico` | Registra atendimento no agendamento em andamento |
+| `POST` | `/profissional/agendamentos/{id}/vacinas` | Registra vacina no agendamento em andamento |
+
+A vacina registra nome, data de aplicação, próxima dose opcional, lote, profissional
+e observações. O histórico clínico registra data/hora, profissional, queixa,
+diagnóstico, tratamento e observações. Não há edição/exclusão de registros clínicos ou
+vacinais nesta versão; correções devem ser feitas administrativamente em uma etapa
+futura com trilha de auditoria. Ao excluir um animal ou conta, os registros clínicos e
+vacinais associados também são removidos.
+
+A listagem profissional retorna somente o id técnico do agendamento, nome do tutor,
+nome do pet, data, horário, indicador de hospedagem e indicadores de ações disponíveis.
+Profissionais recebem apenas agendamentos de usuários comuns; administradores podem
+consultar agendamentos de todos os papéis.
+Ela não retorna IDs de usuário/pet, observações, estado clínico ou dados completos do
+agendamento. A equipe só pode registrar vacina ou histórico clínico durante um
+atendimento com check-in realizado.
+
+O inventário real das novas coleções Firestore não foi lido nesta implementação. A API
+cria novos documentos com IDs gerados e não migra nem sobrescreve documentos
+preexistentes. Ao excluir uma conta em `DELETE /users/me`, seus agendamentos, animais,
+registros clínicos e vacinas também são excluídos, junto com o perfil.
 
 ### Execução local e CORS
 

@@ -3,6 +3,7 @@ package com.patta.api.controller;
 import com.patta.api.dto.AgendamentoRequestDTO;
 import com.patta.api.dto.AgendamentoResponseDTO;
 import com.patta.api.dto.AgendamentoStatusRequestDTO;
+import com.patta.api.dto.DescricaoAgendamentoRequestDTO;
 import com.patta.api.service.AgendamentoService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -46,5 +47,13 @@ public class AgendamentoController {
                                                 @Valid @RequestBody AgendamentoStatusRequestDTO request)
             throws ExecutionException, InterruptedException {
         return agendamentoService.alterarStatus(uid, id, request);
+    }
+
+    @PatchMapping("/{id}/descricao")
+    public AgendamentoResponseDTO alterarDescricao(@AuthenticationPrincipal String uid,
+                                                   @PathVariable String id,
+                                                   @Valid @RequestBody DescricaoAgendamentoRequestDTO request)
+            throws ExecutionException, InterruptedException {
+        return agendamentoService.alterarDescricao(uid, id, request.descricao());
     }
 }

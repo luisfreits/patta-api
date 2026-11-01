@@ -6,6 +6,7 @@ import com.patta.api.dto.AgendamentoStatusRequestDTO;
 import com.patta.api.dto.AnimalResponseDTO;
 import com.patta.api.model.AgendamentoModel;
 import com.patta.api.model.AgendamentoStatus;
+import com.patta.api.model.HorarioFuncionamentoModel;
 import com.patta.api.repository.AgendamentoRepository;
 import jakarta.validation.Validation;
 import jakarta.validation.ValidatorFactory;
@@ -25,6 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
@@ -40,12 +43,14 @@ class AgendamentoServiceTest {
 
     private final AgendamentoRepository repository = mock(AgendamentoRepository.class);
     private final AnimalService animalService = mock(AnimalService.class);
-    private final PapelUsuarioService papelUsuarioService = new PapelUsuarioService(ADMIN_UID);
-    private final AgendamentoService service = new AgendamentoService(repository, animalService, papelUsuarioService);
+    private final DisponibilidadeService disponibilidadeService = mock(DisponibilidadeService.class);
+    private final PapelUsuarioService papelUsuarioService = new PapelUsuarioService(ADMIN_UID, "vet-uid");
+    private final AgendamentoService service = new AgendamentoService(
+            repository, animalService, papelUsuarioService, disponibilidadeService);
 
     @BeforeEach
     void limparMocks() {
-        reset(repository, animalService);
+        reset(repository, animalService, disponibilidadeService);
     }
 
     @AfterAll
@@ -56,7 +61,8 @@ class AgendamentoServiceTest {
     @Test
     void criaAgendamentoComIdentidadeEStatusDefinidosNoServidor() throws Exception {
         when(animalService.buscar(UID, "animal-1")).thenReturn(animalResponse("animal-1"));
-        when(repository.save(any(AgendamentoModel.class))).thenAnswer(invocation -> {
+        when(disponibilidadeService.validarSlot(anyString(), any(), any())).thenReturn(disponibilidade());
+        when(repository.saveIfAvailable(any(AgendamentoModel.class), anyInt())).thenAnswer(invocation -> {
             AgendamentoModel model = invocation.getArgument(0);
             model.setId("appointment-1");
             return model;
@@ -74,7 +80,8 @@ class AgendamentoServiceTest {
     @Test
     void administradorPodeCriarAgendamentoParaPetDoCliente() throws Exception {
         when(animalService.buscar(UID, "animal-1")).thenReturn(animalResponse("animal-1"));
-        when(repository.save(any(AgendamentoModel.class))).thenAnswer(invocation -> {
+        when(disponibilidadeService.validarSlot(anyString(), any(), any())).thenReturn(disponibilidade());
+        when(repository.saveIfAvailable(any(AgendamentoModel.class), anyInt())).thenAnswer(invocation -> {
             AgendamentoModel model = invocation.getArgument(0);
             model.setId("appointment-admin");
             return model;
@@ -128,6 +135,23 @@ class AgendamentoServiceTest {
     }
 
     @Test
+    void profissionalNaoPodeConsultarAgendamentoCompletoDeOutroUsuario() throws Exception {
+        when(repository.findById("a1")).thenReturn(Optional.of(model("a1", OTHER_UID, "PENDENTE")));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> service.buscar("vet-uid", "a1"));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    void profissionalPodeConsultarInternamenteAgendamentoParaEquipe() throws Exception {
+        when(repository.findById("a1")).thenReturn(Optional.of(model("a1", OTHER_UID, "PENDENTE")));
+
+        assertEquals(OTHER_UID, service.buscarParaEquipe("vet-uid", "a1").usuarioId());
+    }
+
+    @Test
     void administradorPodeConsultarAgendamentoDeOutroUsuario() throws Exception {
         when(repository.findById("a1")).thenReturn(Optional.of(model("a1", OTHER_UID, "PENDENTE")));
 
@@ -178,7 +202,7 @@ class AgendamentoServiceTest {
     @Test
     void semUidsAdministrativosConfiguradosNinguemPodeAlterarStatus() {
         AgendamentoService serviceSemAdministradores = new AgendamentoService(
-                repository, animalService, new PapelUsuarioService(""));
+                repository, animalService, new PapelUsuarioService(""), disponibilidadeService);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> serviceSemAdministradores.alterarStatus(ADMIN_UID, "a1",
@@ -211,6 +235,55 @@ class AgendamentoServiceTest {
                 new AgendamentoStatusRequestDTO(AgendamentoStatus.REJEITADO));
 
         assertEquals("REJEITADO", response.status());
+    }
+
+    @Test
+    void administradorRegistraCheckInUmaUnicaVez() throws Exception {
+        AgendamentoModel approved = model("a1", UID, "APROVADO");
+        when(repository.findById("a1")).thenReturn(Optional.of(approved));
+        when(repository.save(approved)).thenReturn(approved);
+
+        AgendamentoResponseDTO response = service.marcarCheckIn(ADMIN_UID, "a1");
+
+        assertEquals(UID, response.usuarioId());
+        assertFalse(response.checkInEm() == null);
+        assertEquals(ADMIN_UID, response.checkInPor());
+        assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
+                () -> service.marcarCheckIn(ADMIN_UID, "a1")).getStatusCode());
+    }
+
+    @Test
+    void checkOutRegistraHospedagemDepoisDoCheckIn() throws Exception {
+        AgendamentoModel boarding = model("a1", UID, "APROVADO");
+        boarding.setServico("hospedagem");
+        boarding.setCheckInEm(new Date());
+        when(repository.findById("a1")).thenReturn(Optional.of(boarding));
+        when(repository.save(boarding)).thenReturn(boarding);
+
+        AgendamentoResponseDTO response = service.marcarCheckOut(ADMIN_UID, "a1");
+
+        assertFalse(response.checkOutEm() == null);
+    }
+
+    @Test
+    void tutorPodeCorrigirDescricaoDoProprioAgendamento() throws Exception {
+        AgendamentoModel appointment = model("a1", UID, "PENDENTE");
+        when(repository.findById("a1")).thenReturn(Optional.of(appointment));
+        when(repository.save(appointment)).thenReturn(appointment);
+
+        AgendamentoResponseDTO response = service.alterarDescricao(UID, "a1", "Texto corrigido");
+
+        assertEquals("Texto corrigido", response.observacoes());
+    }
+
+    @Test
+    void tutorNaoPodeCorrigirDescricaoDeOutroUsuario() throws Exception {
+        when(repository.findById("a1")).thenReturn(Optional.of(model("a1", OTHER_UID, "PENDENTE")));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> service.alterarDescricao(UID, "a1", "Texto"));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
     }
 
     @Test
@@ -257,5 +330,12 @@ class AgendamentoServiceTest {
 
     private AnimalResponseDTO animalResponse(String id) {
         return AnimalResponseDTO.builder().id(id).nome("Rex").build();
+    }
+
+    private HorarioFuncionamentoModel disponibilidade() {
+        return HorarioFuncionamentoModel.builder()
+                .duracaoMinutos(30)
+                .capacidade(1)
+                .build();
     }
 }

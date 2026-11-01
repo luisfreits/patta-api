@@ -25,8 +25,9 @@ class AdminServiceTest {
     private final UserRepository userRepository = mock(UserRepository.class);
     private final AnimalRepository animalRepository = mock(AnimalRepository.class);
     private final AgendamentoService agendamentoService = mock(AgendamentoService.class);
+    private final UserService userService = mock(UserService.class);
     private final AdminService service = new AdminService(
-            userRepository, animalRepository, new PapelUsuarioService(ADMIN_UID), agendamentoService);
+            userRepository, animalRepository, new PapelUsuarioService(ADMIN_UID), agendamentoService, userService);
 
     @Test
     void administradorPodeListarUsuarios() throws Exception {
@@ -37,6 +38,7 @@ class AdminServiceTest {
 
         assertEquals(USER_UID, response.getFirst().id());
         assertEquals("ana@example.com", response.getFirst().email());
+        assertEquals("USER", response.getFirst().role());
         verify(userRepository).findAll();
     }
 

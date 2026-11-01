@@ -4,6 +4,8 @@ import com.patta.api.dto.AnimalRequestDTO;
 import com.patta.api.dto.AnimalResponseDTO;
 import com.patta.api.model.AnimalModel;
 import com.patta.api.repository.AnimalRepository;
+import com.patta.api.repository.RegistroClinicoRepository;
+import com.patta.api.repository.VacinaRepository;
 import jakarta.validation.Validation;
 import jakarta.validation.ValidatorFactory;
 import org.junit.jupiter.api.AfterAll;
@@ -31,14 +33,19 @@ class AnimalServiceTest {
 
     private static final String UID = "owner-uid";
     private static final String OTHER_UID = "other-uid";
+    private static final String ADMIN_UID = "admin-uid";
     private static final ValidatorFactory VALIDATION_FACTORY = Validation.buildDefaultValidatorFactory();
 
     private final AnimalRepository animalRepository = mock(AnimalRepository.class);
-    private final AnimalService animalService = new AnimalService(animalRepository);
+    private final RegistroClinicoRepository registroClinicoRepository = mock(RegistroClinicoRepository.class);
+    private final VacinaRepository vacinaRepository = mock(VacinaRepository.class);
+    private final AnimalService animalService = new AnimalService(
+            animalRepository, registroClinicoRepository, vacinaRepository,
+            new PapelUsuarioService(ADMIN_UID));
 
     @BeforeEach
     void limparMocks() {
-        org.mockito.Mockito.reset(animalRepository);
+        org.mockito.Mockito.reset(animalRepository, registroClinicoRepository, vacinaRepository);
     }
 
     @AfterAll
@@ -85,6 +92,28 @@ class AnimalServiceTest {
         assertEquals(1, encontrados.size());
         assertEquals("1", encontrados.getFirst().id());
         verify(animalRepository).findByUserId(UID);
+    }
+
+    @Test
+    void administradorPodeListarAnimaisDeTodasAsContas() throws Exception {
+        when(animalRepository.findAll()).thenReturn(List.of(
+                animal("1", UID, "Rex", "Cachorro"),
+                animal("2", OTHER_UID, "Mimi", "Gato")));
+
+        assertEquals(2, animalService.listar(ADMIN_UID, null, null).size());
+        verify(animalRepository).findAll();
+    }
+
+    @Test
+    void administradorPodeEditarAnimalDeOutraConta() throws Exception {
+        when(animalRepository.findById("animal-1"))
+                .thenReturn(Optional.of(animal("animal-1", UID, "Rex", "Cachorro")));
+        when(animalRepository.save(any(AnimalModel.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AnimalResponseDTO resposta = animalService.atualizar(ADMIN_UID, "animal-1",
+                request("Rex atualizado", "Cachorro"));
+
+        assertEquals("Rex atualizado", resposta.nome());
     }
 
     @Test

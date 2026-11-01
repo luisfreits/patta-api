@@ -5,15 +5,21 @@ import com.google.cloud.firestore.DocumentReference;
 import com.google.cloud.firestore.DocumentSnapshot;
 import com.google.cloud.firestore.Firestore;
 import com.google.cloud.firestore.QueryDocumentSnapshot;
+import com.google.cloud.firestore.Query;
+import com.google.cloud.firestore.Transaction;
 import com.google.cloud.firestore.WriteBatch;
 import com.patta.api.model.AgendamentoModel;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
 import java.util.Comparator;
+import java.util.Map;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.concurrent.ExecutionException;
 
 @Repository
@@ -40,6 +46,40 @@ public class AgendamentoRepository {
         return agendamento;
     }
 
+    public AgendamentoModel saveIfAvailable(AgendamentoModel agendamento, int capacidade)
+            throws ExecutionException, InterruptedException {
+        DocumentReference documento = agendamentos().document();
+        DocumentReference trava = firestore.collection("travasReservas").document(agendamento.getServico());
+        agendamento.setId(documento.getId());
+        try {
+            firestore.runTransaction(transaction -> {
+                DocumentSnapshot estadoTrava = transaction.get(trava).get();
+                Query consulta = agendamentos().whereEqualTo("servico", agendamento.getServico());
+                List<QueryDocumentSnapshot> existentes = transaction.get(consulta).get().getDocuments();
+                int reservasConflitantes = 0;
+                for (QueryDocumentSnapshot existente : existentes) {
+                    AgendamentoModel reserva = toModel(existente);
+                    if (reserva != null && reservaAtiva(reserva) && conflita(agendamento, reserva)) {
+                        reservasConflitantes++;
+                    }
+                }
+                if (reservasConflitantes >= capacidade) {
+                    throw new ConflitoReservaException();
+                }
+                long revisao = estadoTrava.exists() && estadoTrava.getLong("revisao") != null
+                        ? estadoTrava.getLong("revisao")
+                        : 0L;
+                transaction.set(trava, Map.of("revisao", revisao + 1));
+                transaction.set(documento, agendamento);
+                return null;
+            }).get();
+        } catch (ExecutionException exception) {
+            if (exception.getCause() instanceof ConflitoReservaException conflito) throw conflito;
+            throw exception;
+        }
+        return agendamento;
+    }
+
     public Optional<AgendamentoModel> findById(String id) throws ExecutionException, InterruptedException {
         DocumentSnapshot documento = agendamentos().document(id).get().get();
         return documento.exists() ? Optional.ofNullable(toModel(documento)) : Optional.empty();
@@ -60,6 +100,14 @@ public class AgendamentoRepository {
                 .map(this::toModel)
                 .filter(Objects::nonNull)
                 .sorted(ORDENACAO)
+                .toList();
+    }
+
+    public List<AgendamentoModel> findByServico(String servico)
+            throws ExecutionException, InterruptedException {
+        return agendamentos().whereEqualTo("servico", servico).get().get().getDocuments().stream()
+                .map(this::toModel)
+                .filter(Objects::nonNull)
                 .toList();
     }
 
@@ -84,5 +132,35 @@ public class AgendamentoRepository {
             agendamento.setId(documento.getId());
         }
         return agendamento;
+    }
+
+    private boolean reservaAtiva(AgendamentoModel agendamento) {
+        return !"REJEITADO".equals(agendamento.getStatus())
+                && !"CANCELADO".equals(agendamento.getStatus())
+                && agendamento.getCheckOutEm() == null;
+    }
+
+    private boolean conflita(AgendamentoModel nova, AgendamentoModel existente) {
+        if ("hospedagem".equals(nova.getServico())) {
+            LocalDate inicioNovo = LocalDate.parse(nova.getData());
+            LocalDate fimNovo = LocalDate.parse(nova.getDataSaidaPrevista());
+            LocalDate inicioExistente = LocalDate.parse(existente.getData());
+            LocalDate fimExistente = existente.getDataSaidaPrevista() == null
+                    ? inicioExistente.plusDays(1)
+                    : LocalDate.parse(existente.getDataSaidaPrevista());
+            return inicioNovo.isBefore(fimExistente) && inicioExistente.isBefore(fimNovo);
+        }
+
+        LocalDateTime inicioNovo = LocalDateTime.of(
+                LocalDate.parse(nova.getData()), LocalTime.parse(nova.getHorario()));
+        LocalDateTime fimNovo = inicioNovo.plusMinutes(nova.getDuracaoMinutos());
+        LocalDateTime inicioExistente = LocalDateTime.of(
+                LocalDate.parse(existente.getData()), LocalTime.parse(existente.getHorario()));
+        LocalDateTime fimExistente = inicioExistente.plusMinutes(
+                existente.getDuracaoMinutos() == null ? nova.getDuracaoMinutos() : existente.getDuracaoMinutos());
+        return inicioNovo.isBefore(fimExistente) && inicioExistente.isBefore(fimNovo);
+    }
+
+    public static final class ConflitoReservaException extends RuntimeException {
     }
 }

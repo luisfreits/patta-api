@@ -60,6 +60,7 @@ public class SecurityConfig {
                                 RespostaErro.escrever(response, objectMapper, 403, "Acesso negado.")))
                 .authorizeHttpRequests(autorizacao -> autorizacao
                         .requestMatchers("/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/profissional/**").hasRole("PROFISSIONAL")
                         .requestMatchers(HttpMethod.PATCH, "/agendamentos/*/status").hasRole("ADMIN")
                         .requestMatchers(RotasPublicas.ROTAS_AUTENTICADAS).authenticated()
                         .requestMatchers(RotasPublicas.PADROES).permitAll()

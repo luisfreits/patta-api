@@ -4,6 +4,8 @@ import com.patta.api.dto.AnimalRequestDTO;
 import com.patta.api.dto.AnimalResponseDTO;
 import com.patta.api.model.AnimalModel;
 import com.patta.api.repository.AnimalRepository;
+import com.patta.api.repository.RegistroClinicoRepository;
+import com.patta.api.repository.VacinaRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -21,6 +23,9 @@ import java.util.concurrent.ExecutionException;
 public class AnimalService {
 
     private final AnimalRepository animalRepository;
+    private final RegistroClinicoRepository registroClinicoRepository;
+    private final VacinaRepository vacinaRepository;
+    private final PapelUsuarioService papelUsuarioService;
 
     /** Cria um animal. O dono é o uid autenticado, nunca um campo enviado pelo cliente. */
     public AnimalResponseDTO criar(String uid, AnimalRequestDTO dados) throws ExecutionException, InterruptedException {
@@ -44,8 +49,11 @@ public class AnimalService {
             throws ExecutionException, InterruptedException {
         String filtroNome = normalizarFiltro(nome, 100, "nome");
         String filtroEspecie = normalizarFiltro(especie, 60, "espécie");
-        return animalRepository.findByUserId(uid).stream()
-                .filter(animal -> uid.equals(animal.getUserId()))
+        List<AnimalModel> animais = papelUsuarioService.ehAdministrador(uid)
+                ? animalRepository.findAll()
+                : animalRepository.findByUserId(uid);
+        return animais.stream()
+                .filter(animal -> papelUsuarioService.ehAdministrador(uid) || uid.equals(animal.getUserId()))
                 .filter(animal -> filtroNome == null
                         || animal.getNome() != null
                         && animal.getNome().toLowerCase(Locale.ROOT).contains(filtroNome))
@@ -76,6 +84,8 @@ public class AnimalService {
     /** Remove um animal do usuário. */
     public void deletar(String uid, String animalId) throws ExecutionException, InterruptedException {
         buscarDoUsuario(uid, animalId); // Lança 404 se não existir ou não for do usuário
+        registroClinicoRepository.deleteByAnimalId(animalId);
+        vacinaRepository.deleteByAnimalId(animalId);
         animalRepository.deleteById(animalId);
     }
 
@@ -86,7 +96,7 @@ public class AnimalService {
     private AnimalModel buscarDoUsuario(String uid, String animalId)
             throws ExecutionException, InterruptedException {
         return animalRepository.findById(animalId)
-                .filter(animal -> uid.equals(animal.getUserId()))
+                .filter(animal -> papelUsuarioService.ehAdministrador(uid) || uid.equals(animal.getUserId()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Animal não encontrado."));
     }
 

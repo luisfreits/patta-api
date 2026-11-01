@@ -29,7 +29,7 @@ public class UserController {
         return userService.buscarMeuPerfil(uid);
     }
 
-    /** PUT /users/me: atualiza nome e telefone. E-mail e uid não podem ser alterados. */
+    /** PUT /users/me: atualiza nome, telefone e e-mail do usuário autenticado. */
     @PutMapping
     public UserResponseDTO atualizarMeuPerfil(@AuthenticationPrincipal String uid,
                                               @Valid @RequestBody UserUpdateDTO request)

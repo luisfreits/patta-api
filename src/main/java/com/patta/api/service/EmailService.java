@@ -20,4 +20,13 @@ public class EmailService {
 
         mailSender.send(mensagem);
     }
+
+    public void enviarLinkVerificacao(String destinatario, String link) {
+        SimpleMailMessage mensagem = new SimpleMailMessage();
+        mensagem.setTo(destinatario);
+        mensagem.setSubject("Confirme seu novo e-mail - Patta");
+        mensagem.setText("Olá!\n\nPara confirmar seu novo endereço de e-mail, acesse o link abaixo:\n\n"
+                + link + "\n\nSe você não solicitou essa alteração, entre em contato com o suporte.");
+        mailSender.send(mensagem);
+    }
 }

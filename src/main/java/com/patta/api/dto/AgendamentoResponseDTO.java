@@ -11,8 +11,14 @@ public record AgendamentoResponseDTO(
         String servico,
         LocalDate data,
         LocalTime horario,
+        LocalDate dataSaidaPrevista,
+        Integer duracaoMinutos,
         String status,
         String observacoes,
+        Instant checkInEm,
+        String checkInPor,
+        Instant checkOutEm,
+        String checkOutPor,
         Instant criadoEm,
         Instant atualizadoEm
 ) {}
