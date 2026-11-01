@@ -76,6 +76,8 @@ class FirebaseTokenFilterTest {
             assertEquals("admin-uid", SecurityContextHolder.getContext().getAuthentication().getPrincipal());
             assertEquals("ROLE_ADMIN", SecurityContextHolder.getContext().getAuthentication()
                     .getAuthorities().iterator().next().getAuthority());
+            assertEquals(usuario, request.getAttribute(FirebaseTokenFilter.REQUEST_USER_ATTRIBUTE));
+            verify(firebaseAuth).getUser("admin-uid");
             verify(chain).doFilter(request, response);
         } finally {
             SecurityContextHolder.clearContext();

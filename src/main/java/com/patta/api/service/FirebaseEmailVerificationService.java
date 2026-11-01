@@ -1,8 +1,5 @@
 package com.patta.api.service;
 
-import com.google.firebase.auth.AuthErrorCode;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.UserRecord;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,7 +32,6 @@ public class FirebaseEmailVerificationService {
             "https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key={key}";
     private static final Duration RESEND_INTERVAL = Duration.ofSeconds(60);
 
-    private final FirebaseAuth firebaseAuth;
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
     private final String webApiKey;
@@ -43,12 +39,10 @@ public class FirebaseEmailVerificationService {
     private final Map<String, Instant> lastResendByUid = new ConcurrentHashMap<>();
 
     public FirebaseEmailVerificationService(
-            FirebaseAuth firebaseAuth,
             RestClient.Builder restClientBuilder,
             ObjectMapper objectMapper,
             @Value("${firebase.web-api-key:}") String webApiKey,
             @Value("${firebase.email-action-continue-url:}") String continueUrl) {
-        this.firebaseAuth = firebaseAuth;
         this.restClient = restClientBuilder.build();
         this.objectMapper = objectMapper;
         this.webApiKey = webApiKey;
@@ -60,18 +54,14 @@ public class FirebaseEmailVerificationService {
         enviarCodigoAcao(idToken);
     }
 
-    public void reenviar(String uid, String idToken) {
-        UserRecord usuario = buscarUsuario(uid);
+    public void reenviar(UserRecord usuario, String idToken) {
+        String uid = usuario.getUid();
         if (usuario.isEmailVerified()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Este e-mail já foi verificado.");
         }
 
         aplicarLimiteDeReenvio(uid);
         enviarCodigoAcao(idToken);
-    }
-
-    public boolean emailVerificado(String uid) {
-        return buscarUsuario(uid).isEmailVerified();
     }
 
     private String obterIdToken(String email, String senha) {
@@ -138,20 +128,6 @@ public class FirebaseEmailVerificationService {
             log.warn("Falha de conexão com o Firebase ao enviar a verificação.");
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "Não foi possível conectar ao serviço de autenticação.");
-        }
-    }
-
-    private UserRecord buscarUsuario(String uid) {
-        try {
-            return firebaseAuth.getUser(uid);
-        } catch (FirebaseAuthException exception) {
-            if (exception.getAuthErrorCode() == AuthErrorCode.USER_NOT_FOUND) {
-                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "A conta autenticada não existe.");
-            }
-            log.warn("Falha ao consultar conta no Firebase Authentication: authErrorCode={}",
-                    exception.getAuthErrorCode());
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "Não foi possível validar o estado da conta no Firebase.");
         }
     }
 

@@ -40,9 +40,10 @@ verificação ao Firebase Authentication; não é necessário SMTP.
    que o cadastro foi criado e orienta a pessoa a verificar a caixa de entrada e o spam.
 2. A pessoa abre o link do template de verificação do Firebase para confirmar o endereço.
    O Firebase processa o código de ação diretamente.
-3. O login continua permitido antes da verificação. Depois de entrar, consulte
-   `GET /auth/verificacao/status` com `Authorization: Bearer <idToken>` para obter
-   `{ "emailVerified": true|false }`.
+3. O login continua permitido antes da verificação. A resposta de
+   `POST /auth/login` inclui `emailVerified` e `role`, além dos tokens, evitando
+   chamadas extras para consultar o estado do e-mail e o perfil. O endpoint
+   `GET /auth/verificacao/status` continua disponível para consultas posteriores.
 4. As demais rotas autenticadas retornam `403` enquanto a conta permanecer não verificada.
    O backend consulta o estado atual no Firebase Admin Authentication, sem confiar em
    um campo enviado pelo cliente ou em uma claim possivelmente antiga do token.
@@ -55,9 +56,10 @@ para evitar duplicar ou perder dados. A resposta informa que a pessoa deve entra
 a rota autenticada de reenvio. Se a gravação do perfil falhar, a API tenta remover a conta
 recém-criada do Firebase Authenticati
 O frontend deste repositório não está presente. O cliente que consome esta API deve
-apresentar a instrução de confirmação após o `202`, permitir login, consultar o endpoint
-de status e oferecer o reenvio. Se também usar o Firebase Client SDK, deve recarregar o
-usuário após a volta do link (`reload(user)`) antes de atualizar a interface.
+apresentar a instrução de confirmação após o `202`, permitir login, usar o estado
+`emailVerified` retornado no login e oferecer o reenvio. Se também usar o Firebase
+Client SDK, deve recarregar o usuário após a volta do link (`reload(user)`) antes de
+atualizar a interface.
 
 ## Configuração Firebase necessária
 

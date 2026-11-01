@@ -1,6 +1,6 @@
 package com.patta.api.service;
 
-import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.UserRecord;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -18,6 +18,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withBadRequest;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class FirebaseEmailVerificationServiceTest {
 
@@ -79,9 +80,33 @@ class FirebaseEmailVerificationServiceTest {
         server.verify();
     }
 
+    @Test
+    void reenviaVerificacaoUsandoContaJaValidadaPeloFiltro() {
+        RestClient.Builder restClientBuilder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restClientBuilder).build();
+        server.expect(requestTo("https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key="
+                        + API_KEY))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().json("""
+                        {
+                          "requestType": "VERIFY_EMAIL",
+                          "idToken": "firebase-id-token",
+                          "continueUrl": "https://app.example.test/email-verified"
+                        }
+                        """))
+                .andRespond(withSuccess());
+        UserRecord usuario = mock(UserRecord.class);
+        when(usuario.getUid()).thenReturn("user-uid");
+        when(usuario.isEmailVerified()).thenReturn(false);
+        FirebaseEmailVerificationService service = service(restClientBuilder, CONTINUE_URL);
+
+        service.reenviar(usuario, "firebase-id-token");
+
+        server.verify();
+    }
+
     private FirebaseEmailVerificationService service(RestClient.Builder restClientBuilder, String continueUrl) {
         return new FirebaseEmailVerificationService(
-                mock(FirebaseAuth.class),
                 restClientBuilder,
                 new ObjectMapper(),
                 API_KEY,

@@ -1,5 +1,8 @@
 package com.patta.api.service;
 
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseAuthException;
+import com.google.firebase.auth.UserRecord;
 import com.patta.api.dto.LoginRequestDTO;
 import com.patta.api.dto.LoginResponseDTO;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,15 +38,21 @@ public class LoginService {
     private final RestClient restClient;   // Criado uma vez e reutilizado em todas as chamadas
     private final ObjectMapper objectMapper;
     private final String webApiKey;
+    private final FirebaseAuth firebaseAuth;
+    private final PapelUsuarioService papelUsuarioService;
 
     // Construtor explícito para ler a chave do application.properties com @Value
     // Sem chave configurada, a string fica vazia e o login responde 503 (não derruba a aplicação na inicialização)
     public LoginService(RestClient.Builder restClientBuilder,
                         ObjectMapper objectMapper,
-                        @Value("${firebase.web-api-key:}") String webApiKey) {
+                        @Value("${firebase.web-api-key:}") String webApiKey,
+                        FirebaseAuth firebaseAuth,
+                        PapelUsuarioService papelUsuarioService) {
         this.restClient = restClientBuilder.build();
         this.objectMapper = objectMapper;
         this.webApiKey = webApiKey;
+        this.firebaseAuth = firebaseAuth;
+        this.papelUsuarioService = papelUsuarioService;
     }
 
     /**
@@ -71,11 +80,30 @@ public class LoginService {
                     .body(String.class);
 
             JsonNode resposta = objectMapper.readTree(json);
+            String uid = resposta.path("localId").asString();
+            if (uid.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                        "O Firebase não retornou o identificador da conta.");
+            }
+
+            UserRecord usuario;
+            try {
+                usuario = firebaseAuth.getUser(uid);
+            } catch (FirebaseAuthException exception) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                        "Não foi possível consultar o estado da conta no Firebase.");
+            }
+            if (usuario.isDisabled()) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "E-mail ou senha inválidos.");
+            }
+
             return LoginResponseDTO.builder()
                     .idToken(resposta.path("idToken").asString())
                     .refreshToken(resposta.path("refreshToken").asString())
                     // O Firebase envia expiresIn como texto ("3600"); o DTO espera Long
                     .expiresIn(Long.parseLong(resposta.path("expiresIn").asString("0")))
+                    .emailVerified(usuario.isEmailVerified())
+                    .role(papelUsuarioService.buscarPapel(uid))
                     .build();
 
         } catch (RestClientResponseException exception) {
@@ -86,6 +114,8 @@ public class LoginService {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                     "O serviço de autenticação do Firebase não está disponível.");
 
+        } catch (ResponseStatusException exception) {
+            throw exception;
         } catch (RuntimeException exception) {
             // Falha de rede, JSON malformado ou número inválido em expiresIn
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,

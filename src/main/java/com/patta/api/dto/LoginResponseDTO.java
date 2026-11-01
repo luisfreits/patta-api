@@ -3,7 +3,7 @@ package com.patta.api.dto;
 import lombok.Builder;
 
 /**
- * Tokens de sessão devolvidos após o login no Firebase.
+ * Dados da sessão e do perfil autenticado devolvidos após o login no Firebase.
  */
 @Builder // Gera LoginResponseDTO.builder() para montar a resposta no service
 public record LoginResponseDTO(
@@ -15,7 +15,11 @@ public record LoginResponseDTO(
         String refreshToken,
 
         // Tempo de vida do idToken em segundos. O Firebase envia como texto e o service converte para Long
-        Long expiresIn
+        Long expiresIn,
+
+        boolean emailVerified,
+
+        String role
 ) {
 
     /**
@@ -23,6 +27,7 @@ public record LoginResponseDTO(
      */
     @Override
     public String toString() {
-        return "LoginResponseDTO[idToken=***, refreshToken=***, expiresIn=" + expiresIn + "]";
+        return "LoginResponseDTO[idToken=***, refreshToken=***, expiresIn=" + expiresIn
+                + ", emailVerified=" + emailVerified + ", role=" + role + "]";
     }
 }

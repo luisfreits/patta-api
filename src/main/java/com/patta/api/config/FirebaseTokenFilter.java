@@ -27,6 +27,7 @@ import java.io.IOException;
 @RequiredArgsConstructor
 public class FirebaseTokenFilter extends OncePerRequestFilter {
 
+    public static final String REQUEST_USER_ATTRIBUTE = "firebaseAuthenticatedUser";
     private static final String PREFIXO_BEARER = "Bearer ";
     private static final String MENSAGEM_NAO_AUTORIZADO = "Token ausente ou inválido.";
     private final FirebaseAuth firebaseAuth;
@@ -88,6 +89,8 @@ public class FirebaseTokenFilter extends OncePerRequestFilter {
                     MENSAGEM_NAO_AUTORIZADO);
             return;
         }
+
+        request.setAttribute(REQUEST_USER_ATTRIBUTE, usuario);
 
         if (!usuario.isEmailVerified() && !RotasPublicas.permiteContaNaoVerificada(request.getServletPath())) {
             RespostaErro.escrever(response, objectMapper, HttpServletResponse.SC_FORBIDDEN,

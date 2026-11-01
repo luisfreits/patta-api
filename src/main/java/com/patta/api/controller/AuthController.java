@@ -1,5 +1,7 @@
 package com.patta.api.controller;
 
+import com.google.firebase.auth.UserRecord;
+import com.patta.api.config.FirebaseTokenFilter;
 import com.patta.api.dto.CadastroRequestDTO;
 import com.patta.api.dto.EsqueciSenhaRequestDTO;
 import com.patta.api.dto.LoginRequestDTO;
@@ -7,6 +9,8 @@ import com.patta.api.dto.LoginResponseDTO;
 import com.patta.api.dto.MessageResponseDTO;
 import com.patta.api.dto.PerfilAutenticadoDTO;
 import com.patta.api.dto.VerificationStatusDTO;
+import com.google.firebase.auth.UserRecord;
+import com.patta.api.config.FirebaseTokenFilter;
 import com.patta.api.service.CadastroService;
 import com.patta.api.service.FirebaseEmailVerificationService;
 import com.patta.api.service.LoginService;
@@ -54,17 +58,18 @@ public class AuthController {
     @PostMapping("/auth/verificacao/reenviar")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public MessageResponseDTO reenviarVerificacao(
-            @AuthenticationPrincipal String uid,
+            @RequestAttribute(FirebaseTokenFilter.REQUEST_USER_ATTRIBUTE) UserRecord usuario,
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
         String idToken = authorization.substring("Bearer ".length());
-        emailVerificationService.reenviar(uid, idToken);
+        emailVerificationService.reenviar(usuario, idToken);
         return new MessageResponseDTO("Um novo e-mail de verificação foi enviado.");
     }
 
-    /** GET /auth/verificacao/status: retorna o estado atual consultado no Firebase Authentication. */
+    /** GET /auth/verificacao/status: retorna o estado consultado no filtro de autenticação. */
     @GetMapping("/auth/verificacao/status")
-    public VerificationStatusDTO statusVerificacao(@AuthenticationPrincipal String uid) {
-        return new VerificationStatusDTO(emailVerificationService.emailVerificado(uid));
+    public VerificationStatusDTO statusVerificacao(
+            @RequestAttribute(FirebaseTokenFilter.REQUEST_USER_ATTRIBUTE) UserRecord usuario) {
+        return new VerificationStatusDTO(usuario.isEmailVerified());
     }
 
     /** POST /auth/login: troca e-mail e senha por tokens do Firebase. */
