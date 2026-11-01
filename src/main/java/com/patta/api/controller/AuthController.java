@@ -9,8 +9,6 @@ import com.patta.api.dto.LoginResponseDTO;
 import com.patta.api.dto.MessageResponseDTO;
 import com.patta.api.dto.PerfilAutenticadoDTO;
 import com.patta.api.dto.VerificationStatusDTO;
-import com.google.firebase.auth.UserRecord;
-import com.patta.api.config.FirebaseTokenFilter;
 import com.patta.api.service.CadastroService;
 import com.patta.api.service.FirebaseEmailVerificationService;
 import com.patta.api.service.LoginService;
