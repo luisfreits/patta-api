@@ -387,4 +387,7 @@ Firebase descritas acima. Inicie a API com `.\mvnw.cmd spring-boot:run` na raiz 
 backend. A configuração CORS aceita as origens locais `http://localhost` e
 `http://127.0.0.1` em qualquer porta (incluindo Live Server); origens adicionais devem
 ser listadas em `CORS_ALLOWED_ORIGINS` separadas por vírgulas. Em produção, configure
-somente as origens HTTPS reais do frontend, sem liberar `*`.
+somente as origens HTTPS reais do frontend, sem liberar `*`. Para o frontend publicado
+em `https://frontend-six-virid-35.vercel.app`, inclua essa origem em
+`CORS_ALLOWED_ORIGINS` no Render, preservando as outras origens necessárias. Quando
+essa variável está definida no Render, ela substitui a lista padrão desta aplicação.
