@@ -42,6 +42,17 @@ public class DisponibilidadeController {
         return disponibilidadeService.configurar(uid, servico, diaSemana, request);
     }
 
+    @PutMapping("/admin/disponibilidade/{servico}/periodo")
+    @ResponseStatus(HttpStatus.OK)
+    public void configurarPeriodo(@AuthenticationPrincipal String uid,
+                                  @PathVariable String servico,
+                                  @RequestParam LocalDate inicio,
+                                  @RequestParam LocalDate fim,
+                                  @Valid @RequestBody HorarioFuncionamentoRequestDTO request)
+            throws ExecutionException, InterruptedException {
+        disponibilidadeService.configurarPeriodo(uid, servico, inicio, fim, request);
+    }
+
     @DeleteMapping("/admin/disponibilidade/{servico}/{diaSemana}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void remover(@AuthenticationPrincipal String uid,
@@ -49,5 +60,15 @@ public class DisponibilidadeController {
                         @PathVariable String diaSemana)
             throws ExecutionException, InterruptedException {
         disponibilidadeService.remover(uid, servico, diaSemana);
+    }
+
+    @DeleteMapping("/admin/disponibilidade/{servico}/periodo")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removerPeriodo(@AuthenticationPrincipal String uid,
+                               @PathVariable String servico,
+                               @RequestParam LocalDate inicio,
+                               @RequestParam LocalDate fim)
+            throws ExecutionException, InterruptedException {
+        disponibilidadeService.removerPeriodo(uid, servico, inicio, fim);
     }
 }

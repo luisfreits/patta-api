@@ -4,9 +4,11 @@ import com.patta.api.dto.DisponibilidadeResponseDTO;
 import com.patta.api.dto.HorarioFuncionamentoRequestDTO;
 import com.patta.api.dto.HorarioSlotDTO;
 import com.patta.api.model.AgendamentoModel;
+import com.patta.api.model.DisponibilidadeDataModel;
 import com.patta.api.model.HorarioFuncionamentoModel;
 import com.patta.api.model.IntervaloHorarioModel;
 import com.patta.api.repository.AgendamentoRepository;
+import com.patta.api.repository.DisponibilidadeDataRepository;
 import com.patta.api.repository.HorarioFuncionamentoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -30,6 +32,7 @@ public class DisponibilidadeService {
     private static final List<String> SERVICOS = List.of("consulta", "vacina", "hospedagem");
 
     private final HorarioFuncionamentoRepository horarioRepository;
+    private final DisponibilidadeDataRepository disponibilidadeDataRepository;
     private final AgendamentoRepository agendamentoRepository;
     private final PapelUsuarioService papelUsuarioService;
 
@@ -46,20 +49,43 @@ public class DisponibilidadeService {
                 .diaSemana(diaNormalizado)
                 .duracaoMinutos(request.duracaoMinutos())
                 .capacidade(request.capacidade())
-                .intervalos(request.intervalos().stream()
-                        .map(intervalo -> IntervaloHorarioModel.builder()
-                                .inicio(intervalo.inicio().toString())
-                                .fim(intervalo.fim().toString())
-                                .build())
-                        .toList())
+                .intervalos(intervalosModel(request))
                 .build();
         return horarioRepository.save(horario);
+    }
+
+    public void configurarPeriodo(String uid, String servico, LocalDate inicio, LocalDate fim,
+                                  HorarioFuncionamentoRequestDTO request)
+            throws ExecutionException, InterruptedException {
+        exigirAdministrador(uid);
+        String servicoNormalizado = normalizarServico(servico);
+        validarPeriodo(inicio, fim);
+        validarIntervalos(request.intervalos());
+        List<DisponibilidadeDataModel> disponibilidades = new ArrayList<>();
+        for (LocalDate data = inicio; !data.isAfter(fim); data = data.plusDays(1)) {
+            disponibilidades.add(DisponibilidadeDataModel.builder()
+                    .id(DisponibilidadeDataRepository.id(servicoNormalizado, data))
+                    .servico(servicoNormalizado)
+                    .data(data.toString())
+                    .duracaoMinutos(request.duracaoMinutos())
+                    .capacidade(request.capacidade())
+                    .intervalos(intervalosModel(request))
+                    .build());
+        }
+        disponibilidadeDataRepository.saveAll(disponibilidades);
     }
 
     public void remover(String uid, String servico, String diaSemana)
             throws ExecutionException, InterruptedException {
         exigirAdministrador(uid);
         horarioRepository.delete(normalizarServico(servico), normalizarDia(diaSemana));
+    }
+
+    public void removerPeriodo(String uid, String servico, LocalDate inicio, LocalDate fim)
+            throws ExecutionException, InterruptedException {
+        exigirAdministrador(uid);
+        validarPeriodo(inicio, fim);
+        disponibilidadeDataRepository.deleteRange(normalizarServico(servico), inicio, fim);
     }
 
     public DisponibilidadeResponseDTO consultar(String servico, LocalDate data)
@@ -106,9 +132,41 @@ public class DisponibilidadeService {
 
     private HorarioFuncionamentoModel buscarConfiguracao(String servico, LocalDate data)
             throws ExecutionException, InterruptedException {
+        var configuracaoDaData = disponibilidadeDataRepository.findByServicoAndData(servico, data);
+        if (configuracaoDaData.isPresent()) {
+            var override = configuracaoDaData.get();
+            return HorarioFuncionamentoModel.builder()
+                    .id(override.getId())
+                    .servico(override.getServico())
+                    .diaSemana(data.getDayOfWeek().name())
+                    .intervalos(override.getIntervalos())
+                    .duracaoMinutos(override.getDuracaoMinutos())
+                    .capacidade(override.getCapacidade())
+                    .build();
+        }
         return horarioRepository.findByServicoAndDia(servico, data.getDayOfWeek().name())
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Não há horário de funcionamento configurado para essa data."));
+    }
+
+    private List<IntervaloHorarioModel> intervalosModel(HorarioFuncionamentoRequestDTO request) {
+        return request.intervalos().stream()
+                .map(intervalo -> IntervaloHorarioModel.builder()
+                        .inicio(intervalo.inicio().toString())
+                        .fim(intervalo.fim().toString())
+                        .build())
+                .toList();
+    }
+
+    private void validarPeriodo(LocalDate inicio, LocalDate fim) {
+        if (inicio == null || fim == null || fim.isBefore(inicio)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A data final do período deve ser igual ou posterior à data inicial.");
+        }
+        if (fim.toEpochDay() - inicio.toEpochDay() >= 31) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "O período não pode ultrapassar 31 dias.");
+        }
     }
 
     private int contarReservasNoSlot(List<AgendamentoModel> reservas, String servico, LocalDate data,

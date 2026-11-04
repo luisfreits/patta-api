@@ -48,59 +48,18 @@ public class UserService {
     /** Atualiza o perfil e exige a senha atual para trocar o e-mail. */
     public UserResponseDTO atualizarMeuPerfil(String uid, UserUpdateDTO dados)
             throws ExecutionException, InterruptedException {
-        UserModel usuario = buscarUsuario(uid);
-        UserModel original = copiar(usuario);
-        String novoEmail = normalizarEmail(dados.email());
-        boolean emailAlterado = !novoEmail.equalsIgnoreCase(usuario.getEmail());
-        boolean emailVerificadoOriginal = false;
-
-        if (emailAlterado) {
-            if (dados.senhaAtual() == null || dados.senhaAtual().isBlank()) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Informe sua senha atual para alterar o e-mail.");
-            }
-            loginService.validarSenhaAtual(uid, usuario.getEmail(), dados.senhaAtual());
-            try {
-                emailVerificadoOriginal = firebaseAuth.getUser(uid).isEmailVerified();
-            } catch (FirebaseAuthException exception) {
-                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                        "Não foi possível consultar a conta no Firebase Authentication.");
-            }
-            atualizarEmailFirebase(uid, novoEmail, false);
-        }
-
-        usuario.setNome(dados.nome().trim());
-        usuario.setTelefone(dados.telefone().trim());
-        usuario.setEmail(novoEmail);
-        try {
-            userRepository.save(usuario);
-        } catch (ExecutionException | InterruptedException exception) {
-            if (emailAlterado) restaurarPerfil(original, emailVerificadoOriginal);
-            if (exception instanceof InterruptedException) Thread.currentThread().interrupt();
-            throw exception;
-        }
-
-        if (emailAlterado) {
-            try {
-                String link = firebaseAuth.generateEmailVerificationLink(novoEmail);
-                emailService.enviarLinkVerificacao(novoEmail, link);
-            } catch (FirebaseAuthException | MailException exception) {
-                restaurarPerfil(original, emailVerificadoOriginal);
-                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                        "Não foi possível enviar a verificação. A alteração do e-mail foi revertida.", exception);
-            } catch (RuntimeException exception) {
-                restaurarPerfil(original, emailVerificadoOriginal);
-                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                        "Não foi possível enviar a verificação. A alteração do e-mail foi revertida.", exception);
-            }
-        }
-        return toResponse(usuario);
+        return atualizarPerfil(uid, dados, true);
     }
 
     public UserResponseDTO atualizarPerfilComoAdministrador(String administradorUid, String uid,
                                                              UserUpdateDTO dados)
             throws ExecutionException, InterruptedException {
         exigirAdministrador(administradorUid);
+        return atualizarPerfil(uid, dados, false);
+    }
+
+    private UserResponseDTO atualizarPerfil(String uid, UserUpdateDTO dados, boolean exigirSenhaAtual)
+            throws ExecutionException, InterruptedException {
         UserModel usuario = buscarUsuario(uid);
         UserModel original = copiar(usuario);
         String novoEmail = normalizarEmail(dados.email());
@@ -108,6 +67,13 @@ public class UserService {
         boolean emailVerificadoOriginal = false;
 
         if (emailAlterado) {
+            if (exigirSenhaAtual) {
+                if (dados.senhaAtual() == null || dados.senhaAtual().isBlank()) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Informe sua senha atual para alterar o e-mail.");
+                }
+                loginService.validarSenhaAtual(uid, usuario.getEmail(), dados.senhaAtual());
+            }
             try {
                 emailVerificadoOriginal = firebaseAuth.getUser(uid).isEmailVerified();
             } catch (FirebaseAuthException exception) {

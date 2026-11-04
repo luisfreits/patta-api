@@ -162,7 +162,9 @@ public class AgendamentoService {
     public AgendamentoResponseDTO alterarDescricao(String uid, String id, String descricao)
             throws ExecutionException, InterruptedException {
         AgendamentoModel agendamento = buscarExistente(id);
-            if (!uid.equals(agendamento.getUsuarioId()) && !papelUsuarioService.ehAdministrador(uid)) throw naoEncontrado();
+        if (!uid.equals(agendamento.getUsuarioId()) && !papelUsuarioService.ehAdministrador(uid)) {
+            throw naoEncontrado();
+        }
         if (agendamento.getCheckInEm() != null
                 || AgendamentoStatus.REJEITADO.name().equals(agendamento.getStatus())
                 || AgendamentoStatus.CANCELADO.name().equals(agendamento.getStatus())) {

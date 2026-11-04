@@ -1,9 +1,12 @@
 package com.patta.api.service;
 
+import com.patta.api.dto.HorarioFuncionamentoRequestDTO;
 import com.patta.api.model.AgendamentoModel;
+import com.patta.api.model.DisponibilidadeDataModel;
 import com.patta.api.model.HorarioFuncionamentoModel;
 import com.patta.api.model.IntervaloHorarioModel;
 import com.patta.api.repository.AgendamentoRepository;
+import com.patta.api.repository.DisponibilidadeDataRepository;
 import com.patta.api.repository.HorarioFuncionamentoRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -19,15 +22,19 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class DisponibilidadeServiceTest {
 
     private static final String ADMIN_UID = "admin";
     private final HorarioFuncionamentoRepository horarioRepository = mock(HorarioFuncionamentoRepository.class);
+    private final DisponibilidadeDataRepository disponibilidadeDataRepository =
+            mock(DisponibilidadeDataRepository.class);
     private final AgendamentoRepository agendamentoRepository = mock(AgendamentoRepository.class);
     private final DisponibilidadeService service = new DisponibilidadeService(
-            horarioRepository, agendamentoRepository, new PapelUsuarioService(ADMIN_UID));
+            horarioRepository, disponibilidadeDataRepository, agendamentoRepository,
+            new PapelUsuarioService(ADMIN_UID));
 
     @Test
     void listaSlotsComVagasEConsideraReservasAtivas() throws Exception {
@@ -72,6 +79,64 @@ class DisponibilidadeServiceTest {
                 () -> service.validarSlot("consulta", data, LocalTime.of(9, 15)));
 
         assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+    }
+
+    @Test
+    void usaConfiguracaoPorDataAntesDaRegraSemanal() throws Exception {
+        LocalDate data = proxima(DayOfWeek.THURSDAY);
+        when(disponibilidadeDataRepository.findByServicoAndData("consulta", data))
+                .thenReturn(Optional.of(DisponibilidadeDataModel.builder()
+                        .id("consulta_" + data)
+                        .servico("consulta")
+                        .data(data.toString())
+                        .intervalos(List.of(IntervaloHorarioModel.builder()
+                                .inicio("14:00")
+                                .fim("15:00")
+                                .build()))
+                        .duracaoMinutos(30)
+                        .capacidade(1)
+                        .build()));
+        when(agendamentoRepository.findByServico("consulta")).thenReturn(List.of());
+
+        var response = service.consultar("consulta", data);
+
+        assertEquals(2, response.horarios().size());
+        assertEquals(LocalTime.of(14, 0), response.horarios().get(0).horario());
+        verify(horarioRepository, org.mockito.Mockito.never())
+                .findByServicoAndDia("consulta", "THURSDAY");
+    }
+
+    @Test
+    void gravaDisponibilidadeEmCadaDataDoPeriodo() throws Exception {
+        var request = new HorarioFuncionamentoRequestDTO(
+                List.of(new HorarioFuncionamentoRequestDTO.IntervaloHorarioDTO(
+                        LocalTime.of(8, 0), LocalTime.of(12, 0))),
+                30,
+                1);
+        LocalDate inicio = LocalDate.now().plusDays(1);
+        LocalDate fim = inicio.plusDays(6);
+
+        service.configurarPeriodo(ADMIN_UID, "consulta", inicio, fim, request);
+
+        verify(disponibilidadeDataRepository).saveAll(org.mockito.ArgumentMatchers.argThat(
+                dates -> dates.size() == 7
+                        && dates.get(0).getData().equals(inicio.toString())
+                        && dates.get(6).getData().equals(fim.toString())));
+    }
+
+    @Test
+    void rejeitaPeriodoMaiorQueUmMes() {
+        var request = new HorarioFuncionamentoRequestDTO(
+                List.of(new HorarioFuncionamentoRequestDTO.IntervaloHorarioDTO(
+                        LocalTime.of(8, 0), LocalTime.of(12, 0))),
+                30,
+                1);
+        LocalDate inicio = LocalDate.now();
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> service.configurarPeriodo(ADMIN_UID, "consulta", inicio, inicio.plusDays(31), request));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
     }
 
     private HorarioFuncionamentoModel config(String servico, String dia, int duracao, int capacidade) {

@@ -139,6 +139,41 @@ class UserServiceTest {
         Assertions.assertEquals("11988888888", usuario.getTelefone());
     }
 
+    @Test
+    void administradorAtualizaPerfilSemExigirSenhaAtual() throws Exception {
+        UserRepository userRepository = mock(UserRepository.class);
+        FirebaseAuth firebaseAuth = mock(FirebaseAuth.class);
+        LoginService loginService = mock(LoginService.class);
+        EmailService emailService = mock(EmailService.class);
+        UserService userService = new UserService(
+                userRepository,
+                mock(AnimalRepository.class),
+                mock(AgendamentoRepository.class),
+                mock(RegistroClinicoRepository.class),
+                mock(VacinaRepository.class),
+                firebaseAuth,
+                loginService,
+                emailService,
+                new PapelUsuarioService("admin-uid"));
+        UserModel usuario = UserModel.builder()
+                .id("uid").nome("Nome").email("ana@example.com").telefone("11999999999").build();
+        UserRecord contaFirebase = mock(UserRecord.class);
+        when(userRepository.findById("uid")).thenReturn(Optional.of(usuario));
+        when(firebaseAuth.getUser("uid")).thenReturn(contaFirebase);
+        when(contaFirebase.isEmailVerified()).thenReturn(true);
+        when(firebaseAuth.generateEmailVerificationLink("novo@example.com")).thenReturn("https://verify.example");
+
+        var resposta = userService.atualizarPerfilComoAdministrador("admin-uid", "uid",
+                new UserUpdateDTO("Novo nome", "11988888888", "Novo@Example.com", null));
+
+        Assertions.assertEquals("Novo nome", resposta.nome());
+        Assertions.assertEquals("novo@example.com", resposta.email());
+        verify(userRepository).save(usuario);
+        verify(firebaseAuth).updateUser(any(UserRecord.UpdateRequest.class));
+        verify(emailService).enviarLinkVerificacao("novo@example.com", "https://verify.example");
+        verifyNoInteractions(loginService);
+    }
+
     private UserService criarServico(UserRepository userRepository, FirebaseAuth firebaseAuth,
                                      LoginService loginService, EmailService emailService) {
         return new UserService(

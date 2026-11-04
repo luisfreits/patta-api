@@ -325,7 +325,13 @@ solicitações concorrentes acima da capacidade.
 | --- | --- | --- |
 | `PUT` | `/admin/disponibilidade/{servico}/{diaSemana}` | Cria/substitui os horários, duração e capacidade |
 | `DELETE` | `/admin/disponibilidade/{servico}/{diaSemana}` | Fecha o serviço nesse dia |
+| `PUT` | `/admin/disponibilidade/{servico}/periodo?inicio=2027-05-18&fim=2027-05-24` | Cria exceções de disponibilidade para cada data do período (máximo de 31 dias) |
+| `DELETE` | `/admin/disponibilidade/{servico}/periodo?inicio=2027-05-18&fim=2027-05-24` | Remove as exceções de disponibilidade das datas do período |
 | `GET` | `/disponibilidade?servico=consulta&data=2027-05-18` | Lista slots e vagas disponíveis |
+
+Uma exceção por data tem prioridade sobre a regra recorrente do dia da semana. Ao
+removê-la, a regra semanal volta a ser usada. A aplicação em período não altera a
+configuração semanal; o intervalo inclui as datas inicial e final.
 
 Exemplo de configuração:
 
