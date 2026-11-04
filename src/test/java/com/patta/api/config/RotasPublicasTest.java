@@ -14,6 +14,11 @@ class RotasPublicasTest {
     }
 
     @Test
+    void formularioDeContatoEPublico() {
+        assertTrue(RotasPublicas.isPublica(RotasPublicas.ROTA_CONTATO));
+    }
+
+    @Test
     void verificacaoExigeTokenMasPermiteContaAindaNaoVerificada() {
         assertFalse(RotasPublicas.isPublica(RotasPublicas.ROTA_REENVIO_VERIFICACAO));
         assertFalse(RotasPublicas.isPublica(RotasPublicas.ROTA_STATUS_VERIFICACAO));

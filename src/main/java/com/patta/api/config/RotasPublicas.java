@@ -2,6 +2,7 @@ package com.patta.api.config;
 
 import java.util.List;
 import java.util.Arrays;
+import java.util.stream.Stream;
 
 /**
  * Prefixos das rotas que não exigem token.
@@ -12,6 +13,8 @@ import java.util.Arrays;
 public final class RotasPublicas {
 
     private static final List<String> PREFIXOS = List.of("/auth", "/cadastro");
+    public static final String ROTA_CONTATO = "/contato";
+    private static final List<String> ROTAS_PUBLICAS_EXATAS = List.of(ROTA_CONTATO);
     public static final String ROTA_REENVIO_VERIFICACAO = "/auth/verificacao/reenviar";
     public static final String ROTA_STATUS_VERIFICACAO = "/auth/verificacao/status";
     public static final String ROTA_PERFIL_AUTENTICADO = "/auth/me";
@@ -22,8 +25,9 @@ public final class RotasPublicas {
     };
 
     /** Padrões no formato do Spring Security, por exemplo "/auth/**". */
-    public static final String[] PADROES = PREFIXOS.stream()
-            .map(prefixo -> prefixo + "/**")
+    public static final String[] PADROES = Stream.concat(
+                    PREFIXOS.stream().map(prefixo -> prefixo + "/**"),
+                    ROTAS_PUBLICAS_EXATAS.stream())
             .toArray(String[]::new);
 
     private RotasPublicas() {
@@ -32,8 +36,9 @@ public final class RotasPublicas {
 
     /** Retorna true se o caminho é o prefixo exato ou está dentro de um prefixo público. */
     public static boolean isPublica(String caminho) {
-        return Arrays.stream(ROTAS_AUTENTICADAS).noneMatch(caminho::equals) && PREFIXOS.stream()
-                .anyMatch(prefixo -> caminho.equals(prefixo) || caminho.startsWith(prefixo + "/"));
+        return Arrays.stream(ROTAS_AUTENTICADAS).noneMatch(caminho::equals)
+                && (ROTAS_PUBLICAS_EXATAS.contains(caminho) || PREFIXOS.stream()
+                .anyMatch(prefixo -> caminho.equals(prefixo) || caminho.startsWith(prefixo + "/")));
     }
 
     /** Rotas autenticadas que precisam funcionar antes da confirmação do e-mail. */

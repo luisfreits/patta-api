@@ -29,4 +29,18 @@ public class EmailService {
                 + link + "\n\nSe você não solicitou essa alteração, entre em contato com o suporte.");
         mailSender.send(mensagem);
     }
+
+    public void enviarSolicitacaoContato(String destinatario, String nome, String email,
+                                         String assunto, String texto) {
+        SimpleMailMessage mensagem = new SimpleMailMessage();
+        mensagem.setTo(destinatario);
+        mensagem.setReplyTo(email);
+        mensagem.setSubject("Contato pelo site - Tai Vet");
+        mensagem.setText("Nova mensagem enviada pelo formulário Fale conosco.\n\n"
+                + "Nome: " + nome + "\n"
+                + "E-mail: " + email + "\n"
+                + "Assunto: " + assunto + "\n\n"
+                + "Mensagem:\n" + texto);
+        mailSender.send(mensagem);
+    }
 }
