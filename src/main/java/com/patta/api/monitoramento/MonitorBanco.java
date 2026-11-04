@@ -33,7 +33,7 @@ public class MonitorBanco {
         this.topico = topico;
     }
 
-    @Scheduled(fixedDelay = 60_000, initialDelay = 30_000)
+    @Scheduled(fixedDelay = 5_000, initialDelay = 30_000)
     synchronized void verificarSaude() {
         try {
             // A leitura serve apenas para testar a conexão; o documento pode não existir.
