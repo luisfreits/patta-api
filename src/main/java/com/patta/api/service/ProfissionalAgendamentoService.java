@@ -10,9 +10,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 import java.util.concurrent.ExecutionException;
 
 @Service
@@ -27,24 +26,16 @@ public class ProfissionalAgendamentoService {
     public List<ProfissionalAgendamentoResponseDTO> listar(String uid)
             throws ExecutionException, InterruptedException {
         List<AgendamentoResponseDTO> agendamentos = agendamentoService.listarParaEquipe(uid);
-        Map<String, String> tutores = userRepository.findAll().stream()
-                .collect(Collectors.toMap(
-                        usuario -> usuario.getId(),
-                        usuario -> usuario.getNome() == null ? "" : usuario.getNome(),
-                        (first, ignored) -> first));
-        Map<String, String> pets = animalRepository.findAll().stream()
-                .collect(Collectors.toMap(
-                        animal -> animal.getId(),
-                        animal -> animal.getNome() == null ? "" : animal.getNome(),
-                        (first, ignored) -> first));
-
-        return agendamentos.stream()
-                .filter(agendamento -> papelUsuarioService.ehAdministrador(uid)
-                        || "USER".equals(papelUsuarioService.buscarPapel(agendamento.usuarioId())))
-                .map(agendamento -> toResponse(agendamento,
-                        tutores.getOrDefault(agendamento.usuarioId(), "Tutor"),
-                        pets.getOrDefault(agendamento.animalId(), "Pet")))
-                .toList();
+        List<ProfissionalAgendamentoResponseDTO> respostas = new ArrayList<>();
+        for (AgendamentoResponseDTO agendamento : agendamentos) {
+            if (!papelUsuarioService.ehAdministrador(uid)
+                    && !"USER".equals(papelUsuarioService.buscarPapel(agendamento.usuarioId()))) {
+                continue;
+            }
+            respostas.add(toResponse(agendamento, buscarTutor(agendamento.usuarioId()),
+                    buscarPet(agendamento.animalId())));
+        }
+        return List.copyOf(respostas);
     }
 
     public ProfissionalAgendamentoResponseDTO buscar(String uid, AgendamentoResponseDTO agendamento)
@@ -53,13 +44,19 @@ public class ProfissionalAgendamentoService {
                 && !"USER".equals(papelUsuarioService.buscarPapel(agendamento.usuarioId()))) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Agendamento não encontrado.");
         }
-        String tutorNome = userRepository.findById(agendamento.usuarioId())
+        return toResponse(agendamento, buscarTutor(agendamento.usuarioId()), buscarPet(agendamento.animalId()));
+    }
+
+    private String buscarTutor(String uid) throws ExecutionException, InterruptedException {
+        return userRepository.findById(uid)
                 .map(usuario -> usuario.getNome() == null ? "" : usuario.getNome())
                 .orElse("Tutor");
-        String petNome = animalRepository.findById(agendamento.animalId())
+    }
+
+    private String buscarPet(String id) throws ExecutionException, InterruptedException {
+        return animalRepository.findById(id)
                 .map(animal -> animal.getNome() == null ? "" : animal.getNome())
                 .orElse("Pet");
-        return toResponse(agendamento, tutorNome, petNome);
     }
 
     private ProfissionalAgendamentoResponseDTO toResponse(
@@ -75,6 +72,8 @@ public class ProfissionalAgendamentoService {
 
         return new ProfissionalAgendamentoResponseDTO(
                 agendamento.id(), tutorNome, petNome, agendamento.data(), agendamento.horario(),
+                agendamento.dataSaidaPrevista(), agendamento.tempoHospedagemDias(), agendamento.status(),
+                agendamento.permanenciaExcedente(), agendamento.permanenciaExcedenteDescricao(),
                 hospedagem, checkInDisponivel, checkOutDisponivel, atendimentoDisponivel);
     }
 }

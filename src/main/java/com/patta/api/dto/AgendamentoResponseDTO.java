@@ -2,6 +2,7 @@ package com.patta.api.dto;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 
 public record AgendamentoResponseDTO(
@@ -11,7 +12,10 @@ public record AgendamentoResponseDTO(
         String servico,
         LocalDate data,
         LocalTime horario,
-        LocalDate dataSaidaPrevista,
+        LocalDateTime dataSaidaPrevista,
+        Integer tempoHospedagemDias,
+        boolean permanenciaExcedente,
+        String permanenciaExcedenteDescricao,
         Integer duracaoMinutos,
         String status,
         String observacoes,

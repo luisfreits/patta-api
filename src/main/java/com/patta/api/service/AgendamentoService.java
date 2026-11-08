@@ -3,6 +3,7 @@ package com.patta.api.service;
 import com.patta.api.dto.AgendamentoRequestDTO;
 import com.patta.api.dto.AgendamentoResponseDTO;
 import com.patta.api.dto.AgendamentoStatusRequestDTO;
+import com.patta.api.dto.ProfissionalAgendamentoRequestDTO;
 import com.patta.api.model.AgendamentoModel;
 import com.patta.api.model.AgendamentoStatus;
 import com.patta.api.repository.AgendamentoRepository;
@@ -10,12 +11,16 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-import java.util.Date;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
@@ -28,19 +33,23 @@ public class AgendamentoService {
     private final AnimalService animalService;
     private final PapelUsuarioService papelUsuarioService;
     private final DisponibilidadeService disponibilidadeService;
+    private final ClinicaService clinicaService;
 
     public AgendamentoService(AgendamentoRepository agendamentoRepository,
                               AnimalService animalService,
                               PapelUsuarioService papelUsuarioService,
-                              DisponibilidadeService disponibilidadeService) {
+                              DisponibilidadeService disponibilidadeService,
+                              ClinicaService clinicaService) {
         this.agendamentoRepository = agendamentoRepository;
         this.animalService = animalService;
         this.papelUsuarioService = papelUsuarioService;
         this.disponibilidadeService = disponibilidadeService;
+        this.clinicaService = clinicaService;
     }
 
     public AgendamentoResponseDTO criar(String uid, AgendamentoRequestDTO request)
             throws ExecutionException, InterruptedException {
+        clinicaService.exigirAbertaParaCliente(uid);
         animalService.buscar(uid, request.animalId());
         return criarParaDono(uid, request);
     }
@@ -53,6 +62,25 @@ public class AgendamentoService {
         return criarParaDono(usuarioUid, request);
     }
 
+    public AgendamentoResponseDTO criarParaProfissional(String uid, String referenciaId,
+                                                         ProfissionalAgendamentoRequestDTO request)
+            throws ExecutionException, InterruptedException {
+        exigirEquipe(uid);
+        AgendamentoModel referencia = buscarExistente(referenciaId);
+        if (!isAdministrador(uid) && !"USER".equals(papelUsuarioService.buscarPapel(referencia.getUsuarioId()))) {
+            throw naoEncontrado();
+        }
+        animalService.buscar(referencia.getUsuarioId(), referencia.getAnimalId());
+        AgendamentoRequestDTO novo = new AgendamentoRequestDTO(
+                referencia.getAnimalId(),
+                request.servico(),
+                request.data(),
+                request.horario(),
+                null,
+                request.tempoHospedagemDias());
+        return criarParaDono(referencia.getUsuarioId(), novo);
+    }
+
     private AgendamentoResponseDTO criarParaDono(String uid, AgendamentoRequestDTO request)
             throws ExecutionException, InterruptedException {
         String servico = request.servico().trim().toLowerCase(Locale.ROOT);
@@ -63,22 +91,28 @@ public class AgendamentoService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A data não pode estar no passado.");
         }
         validarHorario(request.horario());
-        if (request.data().isEqual(LocalDate.now()) && !request.horario().isAfter(LocalTime.now())) {
+        boolean hospedagem = "hospedagem".equals(servico);
+        if (!hospedagem && request.data().isEqual(LocalDate.now())
+                && !request.horario().isAfter(LocalTime.now())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "O horário do agendamento não pode estar no passado.");
         }
-        if ("hospedagem".equals(servico)) {
-            if (request.dataSaidaPrevista() == null
-                    || !request.dataSaidaPrevista().isAfter(request.data())) {
+        if (hospedagem) {
+            if (request.tempoHospedagemDias() == null || request.tempoHospedagemDias() < 1) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "A data de saída prevista deve ser posterior à data de entrada.");
+                        "O tempo de hospedagem deve ser de pelo menos 1 dia.");
             }
-        } else if (request.dataSaidaPrevista() != null) {
+        } else if (request.tempoHospedagemDias() != null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "A data de saída prevista só se aplica a hospedagens.");
+                    "O tempo de hospedagem só se aplica a hospedagens.");
         }
 
-        var disponibilidade = disponibilidadeService.validarSlot(servico, request.data(), request.horario());
+        var disponibilidade = hospedagem
+                ? null
+                : disponibilidadeService.validarSlot(servico, request.data(), request.horario());
+        LocalDateTime saidaPrevista = hospedagem
+                ? LocalDateTime.of(request.data(), request.horario()).plusDays(request.tempoHospedagemDias())
+                : null;
 
         Instant agora = Instant.now();
         AgendamentoModel agendamento = AgendamentoModel.builder()
@@ -87,23 +121,25 @@ public class AgendamentoService {
                 .servico(servico)
                 .data(request.data().toString())
                 .horario(request.horario().toString())
-                .dataSaidaPrevista(request.dataSaidaPrevista() == null
-                        ? null
-                        : request.dataSaidaPrevista().toString())
-                .duracaoMinutos(disponibilidade.getDuracaoMinutos())
+                .dataSaidaPrevista(saidaPrevista == null ? null : saidaPrevista.toString())
+                .tempoHospedagemDias(request.tempoHospedagemDias())
+                .duracaoMinutos(disponibilidade == null ? null : disponibilidade.getDuracaoMinutos())
                 .status(AgendamentoStatus.PENDENTE.name())
                 .observacoes(normalizarObservacoes(request.observacoes()))
                 .criadoEm(Date.from(agora))
                 .atualizadoEm(Date.from(agora))
                 .build();
         try {
-            return toResponse(agendamentoRepository.saveIfAvailable(agendamento, disponibilidade.getCapacidade()));
+            return toResponse(agendamentoRepository.saveIfAvailable(
+                    agendamento, disponibilidade == null ? 0 : disponibilidade.getCapacidade()));
         } catch (AgendamentoRepository.AgendamentoDuplicadoException exception) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Este pet já possui um agendamento ativo para o mesmo serviço, data e horário.", exception);
         } catch (AgendamentoRepository.ConflitoReservaException exception) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "O horário ou a capacidade de hospedagem não está mais disponível.", exception);
+            String mensagem = hospedagem
+                    ? "Não há vagas disponíveis para hospedagem no período solicitado."
+                    : "O horário ou a capacidade não está mais disponível.";
+            throw new ResponseStatusException(HttpStatus.CONFLICT, mensagem, exception);
         }
     }
 
@@ -143,8 +179,11 @@ public class AgendamentoService {
 
     public AgendamentoResponseDTO alterarStatus(String uid, String id, AgendamentoStatusRequestDTO request)
             throws ExecutionException, InterruptedException {
-        exigirAdministrador(uid);
+        exigirEquipe(uid);
         AgendamentoModel agendamento = buscarExistente(id);
+        if (!isAdministrador(uid) && !"USER".equals(papelUsuarioService.buscarPapel(agendamento.getUsuarioId()))) {
+            throw naoEncontrado();
+        }
         if (!AgendamentoStatus.PENDENTE.name().equals(agendamento.getStatus())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Somente agendamentos pendentes podem ser aprovados ou rejeitados.");
@@ -152,7 +191,7 @@ public class AgendamentoService {
         if (request.status() != AgendamentoStatus.APROVADO
                 && request.status() != AgendamentoStatus.REJEITADO) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "O administrador só pode aprovar ou rejeitar um agendamento pendente.");
+                    "A equipe só pode aprovar ou rejeitar um agendamento pendente.");
         }
         agendamento.setStatus(request.status().name());
         agendamento.setAtualizadoEm(Date.from(Instant.now()));
@@ -172,6 +211,24 @@ public class AgendamentoService {
                     "A descrição não pode ser alterada após o check-in ou encerramento do agendamento.");
         }
         agendamento.setObservacoes(normalizarObservacoes(descricao));
+        agendamento.setAtualizadoEm(Date.from(Instant.now()));
+        return toResponse(agendamentoRepository.save(agendamento));
+    }
+
+    public AgendamentoResponseDTO cancelar(String uid, String id)
+            throws ExecutionException, InterruptedException {
+        AgendamentoModel agendamento = buscarExistente(id);
+        if (!uid.equals(agendamento.getUsuarioId())) {
+            throw naoEncontrado();
+        }
+        if (AgendamentoStatus.REJEITADO.name().equals(agendamento.getStatus())
+                || AgendamentoStatus.CANCELADO.name().equals(agendamento.getStatus())
+                || agendamento.getCheckInEm() != null
+                || agendamento.getCheckOutEm() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Este agendamento não pode mais ser cancelado.");
+        }
+        agendamento.setStatus(AgendamentoStatus.CANCELADO.name());
         agendamento.setAtualizadoEm(Date.from(Instant.now()));
         return toResponse(agendamentoRepository.save(agendamento));
     }
@@ -247,16 +304,24 @@ public class AgendamentoService {
     }
 
     private AgendamentoResponseDTO toResponse(AgendamentoModel agendamento) {
+        LocalDate data = LocalDate.parse(agendamento.getData());
+        LocalTime horario = agendamento.getHorario() == null
+                ? LocalTime.MIDNIGHT
+                : LocalTime.parse(agendamento.getHorario());
+        LocalDateTime saidaPrevista = parsearSaidaPrevista(agendamento, data, horario);
+        Integer tempoHospedagemDias = resolverTempoHospedagemDias(agendamento, data, horario, saidaPrevista);
+        String descricaoExcedente = calcularDescricaoExcedente(agendamento, tempoHospedagemDias);
         return new AgendamentoResponseDTO(
                 agendamento.getId(),
                 agendamento.getUsuarioId(),
                 agendamento.getAnimalId(),
                 agendamento.getServico(),
-                LocalDate.parse(agendamento.getData()),
-                LocalTime.parse(agendamento.getHorario()),
-                agendamento.getDataSaidaPrevista() == null
-                        ? null
-                        : LocalDate.parse(agendamento.getDataSaidaPrevista()),
+                data,
+                horario,
+                saidaPrevista,
+                tempoHospedagemDias,
+                descricaoExcedente != null,
+                descricaoExcedente,
                 agendamento.getDuracaoMinutos(),
                 agendamento.getStatus(),
                 agendamento.getObservacoes(),
@@ -266,5 +331,62 @@ public class AgendamentoService {
                 agendamento.getCheckOutPor(),
                 agendamento.getCriadoEm().toInstant(),
                 agendamento.getAtualizadoEm().toInstant());
+    }
+
+    private LocalDateTime parsearSaidaPrevista(AgendamentoModel agendamento, LocalDate data, LocalTime horario) {
+        if (agendamento.getDataSaidaPrevista() == null) {
+            return "hospedagem".equals(agendamento.getServico())
+                    && agendamento.getTempoHospedagemDias() != null
+                    ? LocalDateTime.of(data, horario).plusDays(agendamento.getTempoHospedagemDias())
+                    : null;
+        }
+        try {
+            return LocalDateTime.parse(agendamento.getDataSaidaPrevista());
+        } catch (DateTimeParseException exception) {
+            return LocalDate.parse(agendamento.getDataSaidaPrevista()).atTime(horario);
+        }
+    }
+
+    private Integer resolverTempoHospedagemDias(AgendamentoModel agendamento, LocalDate data, LocalTime horario,
+                                                 LocalDateTime saidaPrevista) {
+        if (!"hospedagem".equals(agendamento.getServico())) {
+            return null;
+        }
+        if (agendamento.getTempoHospedagemDias() != null && agendamento.getTempoHospedagemDias() > 0) {
+            return agendamento.getTempoHospedagemDias();
+        }
+        if (saidaPrevista == null) {
+            return 1;
+        }
+        long dias = Duration.between(LocalDateTime.of(data, horario), saidaPrevista).toDays();
+        return Math.toIntExact(Math.max(1, dias));
+    }
+
+    private String calcularDescricaoExcedente(AgendamentoModel agendamento, Integer diasContratados) {
+        if (!"hospedagem".equals(agendamento.getServico()) || diasContratados == null
+                || agendamento.getCheckInEm() == null || agendamento.getCheckOutEm() != null) {
+            return null;
+        }
+        Instant prazo = agendamento.getCheckInEm().toInstant().plus(diasContratados, ChronoUnit.DAYS);
+        Duration excedente = Duration.between(prazo, Instant.now());
+        if (excedente.isZero() || excedente.isNegative()) {
+            return null;
+        }
+        long minutos = Math.max(1, excedente.toMinutes());
+        long dias = minutos / (24 * 60);
+        long horas = minutos % (24 * 60) / 60;
+        long minutosRestantes = minutos % 60;
+        String texto;
+        if (dias > 0) {
+            texto = dias + (dias == 1 ? " dia" : " dias");
+            if (horas > 0) texto += " " + horas + " h";
+            if (minutosRestantes > 0) texto += " " + minutosRestantes + " min";
+        } else if (minutos < 60) {
+            texto = minutos + " min";
+        } else {
+            texto = horas + " h";
+            if (minutosRestantes > 0) texto += " " + minutosRestantes + " min";
+        }
+        return "Permanência além do contratado: " + texto;
     }
 }

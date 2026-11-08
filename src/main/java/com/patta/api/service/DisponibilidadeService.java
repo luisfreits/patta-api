@@ -35,14 +35,16 @@ public class DisponibilidadeService {
     private final DisponibilidadeDataRepository disponibilidadeDataRepository;
     private final AgendamentoRepository agendamentoRepository;
     private final PapelUsuarioService papelUsuarioService;
+    private final ClinicaService clinicaService;
 
     public HorarioFuncionamentoModel configurar(String uid, String servico, String diaSemana,
                                                 HorarioFuncionamentoRequestDTO request)
             throws ExecutionException, InterruptedException {
         exigirAdministrador(uid);
         String servicoNormalizado = normalizarServico(servico);
+        exigirServicoPorHorario(servicoNormalizado);
         String diaNormalizado = normalizarDia(diaSemana);
-        validarIntervalos(request.intervalos());
+        validarConfiguracao(request);
         HorarioFuncionamentoModel horario = HorarioFuncionamentoModel.builder()
                 .id(HorarioFuncionamentoRepository.id(servicoNormalizado, diaNormalizado))
                 .servico(servicoNormalizado)
@@ -50,6 +52,7 @@ public class DisponibilidadeService {
                 .duracaoMinutos(request.duracaoMinutos())
                 .capacidade(request.capacidade())
                 .intervalos(intervalosModel(request))
+                .continuarHorarioPadrao(request.continuarHorarioPadrao())
                 .build();
         return horarioRepository.save(horario);
     }
@@ -59,8 +62,9 @@ public class DisponibilidadeService {
             throws ExecutionException, InterruptedException {
         exigirAdministrador(uid);
         String servicoNormalizado = normalizarServico(servico);
+        exigirServicoPorHorario(servicoNormalizado);
         validarPeriodo(inicio, fim);
-        validarIntervalos(request.intervalos());
+        validarConfiguracao(request);
         List<DisponibilidadeDataModel> disponibilidades = new ArrayList<>();
         for (LocalDate data = inicio; !data.isAfter(fim); data = data.plusDays(1)) {
             disponibilidades.add(DisponibilidadeDataModel.builder()
@@ -70,9 +74,40 @@ public class DisponibilidadeService {
                     .duracaoMinutos(request.duracaoMinutos())
                     .capacidade(request.capacidade())
                     .intervalos(intervalosModel(request))
+                    .continuarHorarioPadrao(request.continuarHorarioPadrao() && data.equals(inicio))
                     .build());
         }
         disponibilidadeDataRepository.saveAll(disponibilidades);
+    }
+
+    public HorarioFuncionamentoModel consultarPadrao(String uid)
+            throws ExecutionException, InterruptedException {
+        exigirEquipe(uid);
+        return horarioRepository.findPadrao()
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Não há horário padrão configurado."));
+    }
+
+    public HorarioFuncionamentoModel configurarPadrao(String uid, HorarioFuncionamentoRequestDTO request)
+            throws ExecutionException, InterruptedException {
+        exigirEquipe(uid);
+        validarConfiguracao(request);
+        validarIntervalosPadrao(request.intervalos());
+        HorarioFuncionamentoModel padrao = HorarioFuncionamentoModel.builder()
+                .id(HorarioFuncionamentoRepository.id("padrao", "TODOS"))
+                .servico("padrao")
+                .diaSemana("TODOS")
+                .intervalos(intervalosModel(request))
+                .duracaoMinutos(request.duracaoMinutos())
+                .capacidade(request.capacidade())
+                .continuarHorarioPadrao(false)
+                .build();
+        return horarioRepository.save(padrao);
+    }
+
+    public void removerPadrao(String uid) throws ExecutionException, InterruptedException {
+        exigirEquipe(uid);
+        horarioRepository.deletePadrao();
     }
 
     public void remover(String uid, String servico, String diaSemana)
@@ -90,9 +125,33 @@ public class DisponibilidadeService {
 
     public DisponibilidadeResponseDTO consultar(String servico, LocalDate data)
             throws ExecutionException, InterruptedException {
+        return consultar(servico, data, null);
+    }
+
+    public DisponibilidadeResponseDTO consultar(String servico, LocalDate data, Integer tempoHospedagemDias)
+            throws ExecutionException, InterruptedException {
         String servicoNormalizado = normalizarServico(servico);
         if (data.isBefore(LocalDate.now())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A data não pode estar no passado.");
+        }
+        if ("hospedagem".equals(servicoNormalizado)) {
+            if (tempoHospedagemDias == null || tempoHospedagemDias < 1) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "O tempo de hospedagem deve ser de pelo menos 1 dia.");
+            }
+            LocalDateTime inicio = data.atStartOfDay();
+            LocalDateTime fim = inicio.plusDays(tempoHospedagemDias);
+            Integer capacidade = clinicaService.consultarCapacidadeHospedagem();
+            int ocupacaoMaxima = agendamentoRepository.picoOcupacaoHospedagem(inicio, fim);
+            int vagasDisponiveis = capacidade == null
+                    ? 0
+                    : Math.max(0, capacidade - ocupacaoMaxima);
+            return new DisponibilidadeResponseDTO(servicoNormalizado, data, null, List.of(),
+                    capacidade, vagasDisponiveis);
+        }
+        if (tempoHospedagemDias != null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "O tempo de hospedagem só se aplica a hospedagens.");
         }
         HorarioFuncionamentoModel config = buscarConfiguracao(servicoNormalizado, data);
         List<AgendamentoModel> reservas = agendamentoRepository.findByServico(servicoNormalizado);
@@ -116,7 +175,12 @@ public class DisponibilidadeService {
 
     public HorarioFuncionamentoModel validarSlot(String servico, LocalDate data, LocalTime horario)
             throws ExecutionException, InterruptedException {
-        HorarioFuncionamentoModel config = buscarConfiguracao(servico, data);
+        String servicoNormalizado = normalizarServico(servico);
+        if ("hospedagem".equals(servicoNormalizado)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A hospedagem não usa validação de horário de atendimento.");
+        }
+        HorarioFuncionamentoModel config = buscarConfiguracao(servicoNormalizado, data);
         for (IntervaloHorarioModel intervalo : config.getIntervalos()) {
             LocalTime inicio = LocalTime.parse(intervalo.getInicio());
             LocalTime fim = LocalTime.parse(intervalo.getFim());
@@ -135,18 +199,78 @@ public class DisponibilidadeService {
         var configuracaoDaData = disponibilidadeDataRepository.findByServicoAndData(servico, data);
         if (configuracaoDaData.isPresent()) {
             var override = configuracaoDaData.get();
-            return HorarioFuncionamentoModel.builder()
+            return aplicarPadraoSeSolicitado(HorarioFuncionamentoModel.builder()
                     .id(override.getId())
                     .servico(override.getServico())
                     .diaSemana(data.getDayOfWeek().name())
                     .intervalos(override.getIntervalos())
                     .duracaoMinutos(override.getDuracaoMinutos())
                     .capacidade(override.getCapacidade())
-                    .build();
+                    .continuarHorarioPadrao(override.getContinuarHorarioPadrao())
+                    .build());
         }
-        return horarioRepository.findByServicoAndDia(servico, data.getDayOfWeek().name())
+        var configuracaoSemanal = horarioRepository.findByServicoAndDia(servico, data.getDayOfWeek().name());
+        if (configuracaoSemanal.isPresent()) {
+            return aplicarPadraoSeSolicitado(configuracaoSemanal.get());
+        }
+        HorarioFuncionamentoModel padrao = horarioRepository.findPadrao()
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Não há horário de funcionamento configurado para essa data."));
+        return HorarioFuncionamentoModel.builder()
+                .id(padrao.getId())
+                .servico(servico)
+                .diaSemana(data.getDayOfWeek().name())
+                .intervalos(padrao.getIntervalos())
+                .duracaoMinutos(padrao.getDuracaoMinutos())
+                .capacidade(padrao.getCapacidade())
+                .continuarHorarioPadrao(false)
+                .build();
+    }
+
+    private HorarioFuncionamentoModel aplicarPadraoSeSolicitado(HorarioFuncionamentoModel configuracao)
+            throws ExecutionException, InterruptedException {
+        if (!Boolean.TRUE.equals(configuracao.getContinuarHorarioPadrao())) {
+            return configuracao;
+        }
+        var padrao = horarioRepository.findPadrao();
+        if (padrao.isEmpty()) {
+            return configuracao;
+        }
+        configuracao.setIntervalos(combinarIntervalos(
+                configuracao.getIntervalos(), padrao.get().getIntervalos()));
+        return configuracao;
+    }
+
+    private List<IntervaloHorarioModel> combinarIntervalos(
+            List<IntervaloHorarioModel> intervalosRegra, List<IntervaloHorarioModel> intervalosPadrao) {
+        List<IntervaloHorarioModel> ordenados = new ArrayList<>();
+        if (intervalosRegra != null) ordenados.addAll(intervalosRegra);
+        if (intervalosPadrao != null) ordenados.addAll(intervalosPadrao);
+        ordenados.sort(Comparator.comparing(intervalo -> LocalTime.parse(intervalo.getInicio())));
+
+        List<IntervaloHorarioModel> combinados = new ArrayList<>();
+        for (IntervaloHorarioModel intervalo : ordenados) {
+            if (combinados.isEmpty()) {
+                combinados.add(copiarIntervalo(intervalo));
+                continue;
+            }
+            IntervaloHorarioModel anterior = combinados.getLast();
+            LocalTime fimAnterior = LocalTime.parse(anterior.getFim());
+            LocalTime inicioAtual = LocalTime.parse(intervalo.getInicio());
+            if (inicioAtual.isAfter(fimAnterior)) {
+                combinados.add(copiarIntervalo(intervalo));
+            } else if (LocalTime.parse(intervalo.getFim()).isAfter(fimAnterior)) {
+                anterior.setFim(intervalo.getFim());
+            }
+        }
+        return List.copyOf(combinados);
+    }
+
+    private IntervaloHorarioModel copiarIntervalo(IntervaloHorarioModel intervalo) {
+        return IntervaloHorarioModel.builder()
+                .inicio(intervalo.getInicio())
+                .fim(intervalo.getFim())
+                .build();
     }
 
     private List<IntervaloHorarioModel> intervalosModel(HorarioFuncionamentoRequestDTO request) {
@@ -155,6 +279,7 @@ public class DisponibilidadeService {
                         .inicio(intervalo.inicio().toString())
                         .fim(intervalo.fim().toString())
                         .build())
+                .sorted(Comparator.comparing(intervalo -> LocalTime.parse(intervalo.getInicio())))
                 .toList();
     }
 
@@ -202,6 +327,10 @@ public class DisponibilidadeService {
     }
 
     private void validarIntervalos(List<HorarioFuncionamentoRequestDTO.IntervaloHorarioDTO> intervalos) {
+        if (intervalos == null || intervalos.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "É necessário informar ao menos um intervalo de funcionamento.");
+        }
         List<HorarioFuncionamentoRequestDTO.IntervaloHorarioDTO> ordenados = intervalos.stream()
                 .sorted(Comparator.comparing(HorarioFuncionamentoRequestDTO.IntervaloHorarioDTO::inicio))
                 .toList();
@@ -215,6 +344,45 @@ public class DisponibilidadeService {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Os intervalos de funcionamento não podem se sobrepor.");
             }
+        }
+    }
+
+    private void validarIntervalosPadrao(List<HorarioFuncionamentoRequestDTO.IntervaloHorarioDTO> intervalos) {
+        if (intervalos == null || intervalos.size() != 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "O horário padrão deve conter exatamente dois intervalos.");
+        }
+        validarIntervalos(intervalos);
+        List<HorarioFuncionamentoRequestDTO.IntervaloHorarioDTO> ordenados = intervalos.stream()
+                .sorted(Comparator.comparing(HorarioFuncionamentoRequestDTO.IntervaloHorarioDTO::inicio))
+                .toList();
+        if (!ordenados.get(1).inicio().isAfter(ordenados.get(0).fim())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "O segundo intervalo do padrão deve começar depois do fim do primeiro.");
+        }
+    }
+
+    private void validarConfiguracao(HorarioFuncionamentoRequestDTO request) {
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A configuração de horário é obrigatória.");
+        }
+        validarIntervalos(request.intervalos());
+        if (request.duracaoMinutos() == null || request.duracaoMinutos() < 5
+                || request.duracaoMinutos() > 1440) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A duração do serviço deve estar entre 5 e 1440 minutos.");
+        }
+        if (request.capacidade() == null || request.capacidade() < 1 || request.capacidade() > 100) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A capacidade deve estar entre 1 e 100.");
+        }
+    }
+
+    private void exigirServicoPorHorario(String servico) {
+        if ("hospedagem".equals(servico)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A hospedagem não usa configuração por horário de atendimento.");
         }
     }
 
@@ -239,6 +407,13 @@ public class DisponibilidadeService {
         if (!papelUsuarioService.ehAdministrador(uid)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Somente administradores autorizados podem configurar horários.");
+        }
+    }
+
+    private void exigirEquipe(String uid) {
+        if (!papelUsuarioService.podeGerenciarAtendimento(uid)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Somente profissionais ou administradores autorizados podem configurar o horário padrão.");
         }
     }
 }

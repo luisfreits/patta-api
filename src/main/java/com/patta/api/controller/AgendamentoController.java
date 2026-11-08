@@ -41,6 +41,12 @@ public class AgendamentoController {
         return agendamentoService.buscar(uid, id);
     }
 
+    @PostMapping("/{id}/cancelar")
+    public AgendamentoResponseDTO cancelar(@AuthenticationPrincipal String uid, @PathVariable String id)
+            throws ExecutionException, InterruptedException {
+        return agendamentoService.cancelar(uid, id);
+    }
+
     @PatchMapping("/{id}/status")
     public AgendamentoResponseDTO alterarStatus(@AuthenticationPrincipal String uid,
                                                 @PathVariable String id,

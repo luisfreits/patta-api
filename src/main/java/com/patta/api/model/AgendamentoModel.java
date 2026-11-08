@@ -22,6 +22,7 @@ public class AgendamentoModel {
     private String data;
     private String horario;
     private String dataSaidaPrevista;
+    private Integer tempoHospedagemDias;
     private Integer duracaoMinutos;
     private String status;
     private String observacoes;

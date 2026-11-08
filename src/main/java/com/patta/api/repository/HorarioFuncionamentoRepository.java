@@ -39,8 +39,17 @@ public class HorarioFuncionamentoRepository {
         return Optional.ofNullable(model);
     }
 
+    public Optional<HorarioFuncionamentoModel> findPadrao()
+            throws ExecutionException, InterruptedException {
+        return findByServicoAndDia("padrao", "TODOS");
+    }
+
     public void delete(String servico, String diaSemana) throws ExecutionException, InterruptedException {
         horarios().document(id(servico, diaSemana)).delete().get();
+    }
+
+    public void deletePadrao() throws ExecutionException, InterruptedException {
+        horarios().document(id("padrao", "TODOS")).delete().get();
     }
 
     public static String id(String servico, String diaSemana) {

@@ -19,4 +19,5 @@ public class HorarioFuncionamentoModel {
     private java.util.List<IntervaloHorarioModel> intervalos;
     private Integer duracaoMinutos;
     private Integer capacidade;
+    private Boolean continuarHorarioPadrao;
 }

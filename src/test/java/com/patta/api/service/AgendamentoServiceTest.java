@@ -4,10 +4,13 @@ import com.patta.api.dto.AgendamentoRequestDTO;
 import com.patta.api.dto.AgendamentoResponseDTO;
 import com.patta.api.dto.AgendamentoStatusRequestDTO;
 import com.patta.api.dto.AnimalResponseDTO;
+import com.patta.api.dto.ProfissionalAgendamentoRequestDTO;
 import com.patta.api.model.AgendamentoModel;
 import com.patta.api.model.AgendamentoStatus;
+import com.patta.api.model.ClinicaConfigModel;
 import com.patta.api.model.HorarioFuncionamentoModel;
 import com.patta.api.repository.AgendamentoRepository;
+import com.patta.api.repository.ClinicaConfigRepository;
 import jakarta.validation.Validation;
 import jakarta.validation.ValidatorFactory;
 import org.junit.jupiter.api.AfterAll;
@@ -17,13 +20,17 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -33,6 +40,7 @@ import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 
 class AgendamentoServiceTest {
 
@@ -45,8 +53,9 @@ class AgendamentoServiceTest {
     private final AnimalService animalService = mock(AnimalService.class);
     private final DisponibilidadeService disponibilidadeService = mock(DisponibilidadeService.class);
     private final PapelUsuarioService papelUsuarioService = new PapelUsuarioService(ADMIN_UID, "vet-uid");
+    private final ClinicaService clinicaService = mock(ClinicaService.class);
     private final AgendamentoService service = new AgendamentoService(
-            repository, animalService, papelUsuarioService, disponibilidadeService);
+            repository, animalService, papelUsuarioService, disponibilidadeService, clinicaService);
 
     @BeforeEach
     void limparMocks() {
@@ -75,6 +84,127 @@ class AgendamentoServiceTest {
         assertEquals("PENDENTE", response.status());
         assertEquals("consulta", response.servico());
         verify(animalService).buscar(UID, "animal-1");
+    }
+
+    @Test
+    void bloqueiaCriacaoDeClienteQuandoClinicaEstaFechada() throws Exception {
+        doThrow(new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                ClinicaService.MENSAGEM_CLINICA_FECHADA))
+                .when(clinicaService).exigirAbertaParaCliente(UID);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> service.criar(UID, request("animal-1", "consulta")));
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, exception.getStatusCode());
+        assertEquals("A clínica está fechada no momento. Por favor, aguarde.", exception.getReason());
+        verifyNoInteractions(animalService, repository);
+    }
+
+    @Test
+    void profissionalPodeCriarEnquantoClinicaEstaFechada() throws Exception {
+        ClinicaConfigRepository clinicaRepository = mock(ClinicaConfigRepository.class);
+        ClinicaService clinicaFechada = new ClinicaService(clinicaRepository, papelUsuarioService);
+        AgendamentoService serviceComClinicaFechada = new AgendamentoService(
+                repository, animalService, papelUsuarioService, disponibilidadeService, clinicaFechada);
+        when(clinicaRepository.buscar()).thenReturn(ClinicaConfigModel.builder().aberta(false).build());
+        when(animalService.buscar("vet-uid", "animal-1")).thenReturn(animalResponse("animal-1"));
+        when(disponibilidadeService.validarSlot(anyString(), any(), any())).thenReturn(disponibilidade());
+        when(repository.saveIfAvailable(any(AgendamentoModel.class), anyInt())).thenAnswer(invocation -> {
+            AgendamentoModel model = invocation.getArgument(0);
+            model.setId("appointment-professional");
+            return model;
+        });
+
+        AgendamentoResponseDTO response = serviceComClinicaFechada.criar(
+                "vet-uid", request("animal-1", "consulta"));
+
+        assertEquals("appointment-professional", response.id());
+        verifyNoInteractions(clinicaRepository);
+    }
+
+    @Test
+    void calculaHospedagemDeCincoDiasComoCentoEVinteHorasSemGradeHoraria() throws Exception {
+        LocalDate entrada = LocalDate.now().plusDays(2);
+        AgendamentoRequestDTO request = new AgendamentoRequestDTO(
+                "animal-1", "hospedagem", entrada, LocalTime.of(10, 30), null, 5);
+        when(animalService.buscar(UID, "animal-1")).thenReturn(animalResponse("animal-1"));
+        when(repository.saveIfAvailable(any(AgendamentoModel.class), anyInt())).thenAnswer(invocation -> {
+            AgendamentoModel model = invocation.getArgument(0);
+            model.setId("boarding-5-days");
+            return model;
+        });
+
+        AgendamentoResponseDTO response = service.criar(UID, request);
+
+        assertEquals(5, response.tempoHospedagemDias());
+        assertEquals(LocalDateTime.of(entrada, LocalTime.of(10, 30)).plusHours(120),
+                response.dataSaidaPrevista());
+        assertNull(response.duracaoMinutos());
+        verify(disponibilidadeService, org.mockito.Mockito.never()).validarSlot(anyString(), any(), any());
+    }
+
+    @Test
+    void hospedagemComEntradaHojeIgnoraHorarioOcultoMeiaNoite() throws Exception {
+        AgendamentoRequestDTO request = new AgendamentoRequestDTO(
+                "animal-1", "hospedagem", LocalDate.now(), LocalTime.MIDNIGHT, null, 1);
+        when(animalService.buscar(UID, "animal-1")).thenReturn(animalResponse("animal-1"));
+        when(repository.saveIfAvailable(any(AgendamentoModel.class), anyInt()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        AgendamentoResponseDTO response = service.criar(UID, request);
+
+        assertEquals(LocalDateTime.of(LocalDate.now(), LocalTime.MIDNIGHT).plusHours(24),
+                response.dataSaidaPrevista());
+    }
+
+    @Test
+    void hospedagemSemVagaRetorna409ComMensagemExata() throws Exception {
+        when(animalService.buscar(UID, "animal-1")).thenReturn(animalResponse("animal-1"));
+        when(repository.saveIfAvailable(any(AgendamentoModel.class), anyInt()))
+                .thenThrow(new AgendamentoRepository.ConflitoReservaException());
+        AgendamentoRequestDTO request = new AgendamentoRequestDTO(
+                "animal-1", "hospedagem", LocalDate.now().plusDays(2), LocalTime.NOON, null, 2);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> service.criar(UID, request));
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        assertEquals("Não há vagas disponíveis para hospedagem no período solicitado.", exception.getReason());
+    }
+
+    @Test
+    void criaAgendamentoProfissionalUsandoTutorEPetDaReferenciaVisivel() throws Exception {
+        AgendamentoModel referencia = model("referencia", UID, "APROVADO");
+        when(repository.findById("referencia")).thenReturn(Optional.of(referencia));
+        when(animalService.buscar(UID, "animal-1")).thenReturn(animalResponse("animal-1"));
+        when(disponibilidadeService.validarSlot(anyString(), any(), any())).thenReturn(disponibilidade());
+        when(repository.saveIfAvailable(any(AgendamentoModel.class), anyInt())).thenAnswer(invocation -> {
+            AgendamentoModel novo = invocation.getArgument(0);
+            novo.setId("profissional-novo");
+            return novo;
+        });
+        ProfissionalAgendamentoRequestDTO request = new ProfissionalAgendamentoRequestDTO(
+                "consulta", LocalDate.now().plusDays(2), LocalTime.of(11, 0), null);
+
+        AgendamentoResponseDTO response = service.criarParaProfissional("vet-uid", "referencia", request);
+
+        assertEquals(UID, response.usuarioId());
+        assertEquals("animal-1", response.animalId());
+        verify(animalService).buscar(UID, "animal-1");
+    }
+
+    @Test
+    void profissionalNaoPodeCriarAgendamentoComReferenciaDeOutroPapel() throws Exception {
+        when(repository.findById("referencia")).thenReturn(Optional.of(model("referencia", ADMIN_UID, "APROVADO")));
+        ProfissionalAgendamentoRequestDTO request = new ProfissionalAgendamentoRequestDTO(
+                "consulta", LocalDate.now().plusDays(2), LocalTime.of(11, 0), null);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> service.criarParaProfissional("vet-uid", "referencia", request));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+        verifyNoInteractions(animalService);
+        verify(repository, org.mockito.Mockito.never()).saveIfAvailable(any(), anyInt());
     }
 
     @Test
@@ -206,6 +336,17 @@ class AgendamentoServiceTest {
     }
 
     @Test
+    void dtoExigeDiasSomenteParaHospedagem() {
+        AgendamentoRequestDTO semDias = new AgendamentoRequestDTO(
+                "animal-1", "hospedagem", LocalDate.now().plusDays(1), LocalTime.NOON, null, null);
+        AgendamentoRequestDTO diasEmConsulta = new AgendamentoRequestDTO(
+                "animal-1", "consulta", LocalDate.now().plusDays(1), LocalTime.NOON, null, 2);
+
+        assertFalse(VALIDATION_FACTORY.getValidator().validate(semDias).isEmpty());
+        assertFalse(VALIDATION_FACTORY.getValidator().validate(diasEmConsulta).isEmpty());
+    }
+
+    @Test
     void usuarioComumNaoPodeAlterarStatusAdministrativamente() {
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> service.alterarStatus(UID, "a1",
@@ -218,7 +359,7 @@ class AgendamentoServiceTest {
     @Test
     void semUidsAdministrativosConfiguradosNinguemPodeAlterarStatus() {
         AgendamentoService serviceSemAdministradores = new AgendamentoService(
-                repository, animalService, new PapelUsuarioService(""), disponibilidadeService);
+                repository, animalService, new PapelUsuarioService(""), disponibilidadeService, clinicaService);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> serviceSemAdministradores.alterarStatus(ADMIN_UID, "a1",
@@ -254,6 +395,19 @@ class AgendamentoServiceTest {
     }
 
     @Test
+    void profissionalPodeAprovarAgendamentoPendenteDeCliente() throws Exception {
+        AgendamentoModel pending = model("a1", UID, "PENDENTE");
+        when(repository.findById("a1")).thenReturn(Optional.of(pending));
+        when(repository.save(pending)).thenReturn(pending);
+
+        AgendamentoResponseDTO response = service.alterarStatus("vet-uid", "a1",
+                new AgendamentoStatusRequestDTO(AgendamentoStatus.APROVADO));
+
+        assertEquals("APROVADO", response.status());
+        verify(repository).save(pending);
+    }
+
+    @Test
     void administradorRegistraCheckInUmaUnicaVez() throws Exception {
         AgendamentoModel approved = model("a1", UID, "APROVADO");
         when(repository.findById("a1")).thenReturn(Optional.of(approved));
@@ -279,6 +433,48 @@ class AgendamentoServiceTest {
         AgendamentoResponseDTO response = service.marcarCheckOut(ADMIN_UID, "a1");
 
         assertFalse(response.checkOutEm() == null);
+    }
+
+    @Test
+    void tutorPodeCancelarAgendamentoProprioSemConsultarEstadoDaClinica() throws Exception {
+        AgendamentoModel appointment = model("a1", UID, "PENDENTE");
+        when(repository.findById("a1")).thenReturn(Optional.of(appointment));
+        when(repository.save(appointment)).thenReturn(appointment);
+
+        AgendamentoResponseDTO response = service.cancelar(UID, "a1");
+
+        assertEquals("CANCELADO", response.status());
+        verify(repository).save(appointment);
+        verifyNoInteractions(clinicaService);
+    }
+
+    @Test
+    void tutorNaoPodeCancelarAgendamentoDeOutraPessoa() throws Exception {
+        when(repository.findById("a1")).thenReturn(Optional.of(model("a1", OTHER_UID, "PENDENTE")));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> service.cancelar(UID, "a1"));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+        verify(repository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void naoPermiteCancelarAgendamentoRejeitadoCanceladoOuComCheckIn() throws Exception {
+        AgendamentoModel rejected = model("rejected", UID, "REJEITADO");
+        AgendamentoModel canceled = model("canceled", UID, "CANCELADO");
+        AgendamentoModel checkedIn = model("checked-in", UID, "APROVADO");
+        checkedIn.setCheckInEm(new Date());
+        when(repository.findById("rejected")).thenReturn(Optional.of(rejected));
+        when(repository.findById("canceled")).thenReturn(Optional.of(canceled));
+        when(repository.findById("checked-in")).thenReturn(Optional.of(checkedIn));
+
+        for (String id : List.of("rejected", "canceled", "checked-in")) {
+            ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                    () -> service.cancelar(UID, id));
+            assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        }
+        verify(repository, org.mockito.Mockito.never()).save(any());
     }
 
     @Test
@@ -321,6 +517,63 @@ class AgendamentoServiceTest {
                 () -> service.buscar(UID, "missing"));
 
         assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    void leHospedagemLegadaEInfereDuracaoPelaDiferencaDeDatas() throws Exception {
+        LocalDate entrada = LocalDate.now().minusDays(10);
+        AgendamentoModel legado = model("legado", UID, "APROVADO");
+        legado.setServico("hospedagem");
+        legado.setData(entrada.toString());
+        legado.setHorario("10:30");
+        legado.setDataSaidaPrevista(entrada.plusDays(4).toString());
+        when(repository.findById("legado")).thenReturn(Optional.of(legado));
+
+        AgendamentoResponseDTO response = service.buscar(UID, "legado");
+
+        assertEquals(4, response.tempoHospedagemDias());
+        assertEquals(LocalDateTime.of(entrada.plusDays(4), LocalTime.of(10, 30)),
+                response.dataSaidaPrevista());
+    }
+
+    @Test
+    void formataOsTresIntervalosDePermanenciaExcedente() throws Exception {
+        assertEquals("Permanência além do contratado: 30 min",
+                responseComExcedente(1, Duration.ofMinutes(30)).permanenciaExcedenteDescricao());
+        assertEquals("Permanência além do contratado: 2 h 15 min",
+                responseComExcedente(1, Duration.ofHours(2).plusMinutes(15))
+                        .permanenciaExcedenteDescricao());
+        assertEquals("Permanência além do contratado: 1 dia 3 h",
+                responseComExcedente(2, Duration.ofDays(1).plusHours(3))
+                        .permanenciaExcedenteDescricao());
+    }
+
+    @Test
+    void naoMostraExcedenteDepoisDoCheckOut() throws Exception {
+        AgendamentoModel hospedagem = model("encerrada", UID, "APROVADO");
+        hospedagem.setServico("hospedagem");
+        hospedagem.setTempoHospedagemDias(1);
+        hospedagem.setDataSaidaPrevista(LocalDateTime.now().plusDays(1).toString());
+        hospedagem.setCheckInEm(Date.from(Instant.now().minus(Duration.ofDays(3))));
+        hospedagem.setCheckOutEm(new Date());
+        when(repository.findById("encerrada")).thenReturn(Optional.of(hospedagem));
+
+        AgendamentoResponseDTO response = service.buscar(UID, "encerrada");
+
+        assertFalse(response.permanenciaExcedente());
+        assertNull(response.permanenciaExcedenteDescricao());
+    }
+
+    private AgendamentoResponseDTO responseComExcedente(int diasContratados, Duration excedente) throws Exception {
+        Instant agora = Instant.now();
+        AgendamentoModel hospedagem = model("excedente", UID, "APROVADO");
+        hospedagem.setServico("hospedagem");
+        hospedagem.setTempoHospedagemDias(diasContratados);
+        hospedagem.setDataSaidaPrevista(LocalDateTime.of(
+                LocalDate.now().plusDays(2), LocalTime.NOON).toString());
+        hospedagem.setCheckInEm(Date.from(agora.minus(Duration.ofDays(diasContratados)).minus(excedente)));
+        when(repository.findById("excedente")).thenReturn(Optional.of(hospedagem));
+        return service.buscar(UID, "excedente");
     }
 
     private AgendamentoRequestDTO request(String animalId, String servico) {

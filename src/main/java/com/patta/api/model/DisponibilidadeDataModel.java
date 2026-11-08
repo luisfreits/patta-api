@@ -21,4 +21,5 @@ public class DisponibilidadeDataModel {
     private List<IntervaloHorarioModel> intervalos;
     private Integer duracaoMinutos;
     private Integer capacidade;
+    private Boolean continuarHorarioPadrao;
 }

@@ -3,6 +3,7 @@ package com.patta.api.controller;
 import com.patta.api.dto.RegistroClinicoRequestDTO;
 import com.patta.api.dto.VacinaRequestDTO;
 import com.patta.api.dto.AgendamentoResponseDTO;
+import com.patta.api.dto.ProfissionalAgendamentoRequestDTO;
 import com.patta.api.dto.ProfissionalAgendamentoResponseDTO;
 import com.patta.api.service.AgendamentoService;
 import com.patta.api.service.ProfissionalAgendamentoService;
@@ -35,6 +36,17 @@ public class ProfissionalController {
     public List<ProfissionalAgendamentoResponseDTO> listarAgendamentos(@AuthenticationPrincipal String uid)
             throws ExecutionException, InterruptedException {
         return profissionalAgendamentoService.listar(uid);
+    }
+
+    @PostMapping("/{id}/novo")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ProfissionalAgendamentoResponseDTO criarAgendamento(
+            @AuthenticationPrincipal String uid,
+            @PathVariable String id,
+            @Valid @RequestBody ProfissionalAgendamentoRequestDTO request)
+            throws ExecutionException, InterruptedException {
+        AgendamentoResponseDTO agendamento = agendamentoService.criarParaProfissional(uid, id, request);
+        return profissionalAgendamentoService.buscar(uid, agendamento);
     }
 
     @PostMapping("/{id}/historico-clinico")

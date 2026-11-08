@@ -27,9 +27,34 @@ public class DisponibilidadeController {
     private final DisponibilidadeService disponibilidadeService;
 
     @GetMapping("/disponibilidade")
-    public DisponibilidadeResponseDTO consultar(@RequestParam String servico, @RequestParam LocalDate data)
+    public DisponibilidadeResponseDTO consultar(
+            @RequestParam String servico,
+            @RequestParam LocalDate data,
+            @RequestParam(required = false) Integer tempoHospedagemDias)
             throws ExecutionException, InterruptedException {
-        return disponibilidadeService.consultar(servico, data);
+        return disponibilidadeService.consultar(servico, data, tempoHospedagemDias);
+    }
+
+    @GetMapping("/profissional/disponibilidade/padrao")
+    public HorarioFuncionamentoModel consultarPadrao(@AuthenticationPrincipal String uid)
+            throws ExecutionException, InterruptedException {
+        return disponibilidadeService.consultarPadrao(uid);
+    }
+
+    @PutMapping("/profissional/disponibilidade/padrao")
+    @ResponseStatus(HttpStatus.OK)
+    public HorarioFuncionamentoModel configurarPadrao(
+            @AuthenticationPrincipal String uid,
+            @Valid @RequestBody HorarioFuncionamentoRequestDTO request)
+            throws ExecutionException, InterruptedException {
+        return disponibilidadeService.configurarPadrao(uid, request);
+    }
+
+    @DeleteMapping("/profissional/disponibilidade/padrao")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removerPadrao(@AuthenticationPrincipal String uid)
+            throws ExecutionException, InterruptedException {
+        disponibilidadeService.removerPadrao(uid);
     }
 
     @PutMapping("/admin/disponibilidade/{servico}/{diaSemana}")

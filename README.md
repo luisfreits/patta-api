@@ -209,11 +209,13 @@ inicial é `PENDENTE` e os timestamps são preenchidos pelo servidor.
 | `GET` | `/agendamentos` | Lista os agendamentos do usuário; UID administrativo lista todos | `200 OK` |
 | `GET` | `/admin/agendamentos` | Lista todos os agendamentos; exclusivo para administradores | `200 OK` |
 | `GET` | `/agendamentos/{id}` | Consulta um agendamento próprio; UID administrativo pode consultar qualquer um | `200 OK` |
-| `PATCH` | `/agendamentos/{id}/status` | Admin aprova ou rejeita um agendamento pendente | `200 OK` |
+| `POST` | `/agendamentos/{id}/cancelar` | Tutor cancela o próprio agendamento antes do check-in | `200 OK` |
+| `PATCH` | `/agendamentos/{id}/status` | Profissional ou administrador aprova/rejeita agendamento de usuário comum; admin também gerencia outros papéis | `200 OK` |
 | `PATCH` | `/agendamentos/{id}/descricao` | Tutor corrige a descrição do problema do próprio agendamento | `200 OK` |
 | `POST` | `/admin/agendamentos/{id}/check-in` | Registra a entrada/check-in de um agendamento aprovado | `200 OK` |
 | `POST` | `/admin/agendamentos/{id}/check-out` | Registra a saída/check-out de uma hospedagem | `200 OK` |
 | `GET` | `/profissional/agendamentos` | Profissionais veem dados mínimos dos agendamentos de usuários comuns; administradores veem os de todos os papéis | `200 OK` |
+| `POST` | `/profissional/agendamentos/{id}/novo` | Cria agendamento para usuário comum com base em um agendamento de referência | `201 Created` |
 | `POST` | `/profissional/agendamentos/{id}/check-in` | Profissional ou administrador registra check-in | `200 OK` |
 | `POST` | `/profissional/agendamentos/{id}/check-out` | Profissional ou administrador registra check-out de hospedagem | `200 OK` |
 
@@ -221,8 +223,9 @@ O POST recebe datas ISO (`yyyy-MM-dd`) e horários (`HH:mm`). Os serviços aceit
 `consulta`, `vacina` e `hospedagem`, em minúsculas. `animalId` precisa identificar um
 animal pertencente ao usuário autenticado. `observacoes` é opcional, com até 1000
 caracteres; data, horário e animal são obrigatórios.
-O horário precisa estar configurado e disponível. Para `hospedagem`, envie também
-`dataSaidaPrevista`, posterior à data de entrada.
+O horário precisa estar configurado e disponível. Para `hospedagem`, informe
+`tempoHospedagemDias` (mínimo de um dia); a saída prevista é calculada a partir da data
+de entrada. Registros antigos que contenham `dataSaidaPrevista` continuam sendo lidos.
 Não é permitido criar mais de um agendamento ativo para o mesmo pet, serviço, data e
 horário. Agendamentos rejeitados ou cancelados não impedem uma nova solicitação.
 Agendamentos em outra data ou horário continuam permitidos; o sistema não mantém
@@ -286,8 +289,9 @@ Content-Type: application/json
 ```
 
 Somente `PENDENTE -> APROVADO` e `PENDENTE -> REJEITADO` são permitidos. Usuários
-comuns recebem `403`; transições inválidas recebem `409`. `CANCELADO` está reservado
-no modelo, mas não há endpoint de cancelamento no MVP.
+sem privilégio recebem `403`; transições inválidas recebem `409`. O tutor pode cancelar
+somente o próprio agendamento, antes do check-in. O cancelamento não depende de a clínica
+estar aberta; agendamentos já cancelados/rejeitados ou com check-in não podem ser cancelados.
 
 O tutor pode corrigir `observacoes` com `PATCH /agendamentos/{id}/descricao` até o
 check-in, desde que o agendamento não tenha sido rejeitado/cancelado. O check-in é
@@ -314,12 +318,13 @@ com o UID extraído do ID token validado. O frontend não concede privilégios.
 
 ## Disponibilidade, check-in e hospedagem
 
-O administrador configura uma janela de funcionamento para cada serviço e dia da
-semana. O dia usa o nome em inglês e caixa alta (`MONDAY` a `SUNDAY`). Durações são
+O administrador configura horários semanais e exceções por data para `consulta` e
+`vacina`. O dia usa o nome em inglês e caixa alta (`MONDAY` a `SUNDAY`). Durações são
 em minutos; cada intervalo gera slots consecutivos a partir do horário de início.
 Intervalos no mesmo dia não podem se sobrepor. A capacidade vale para cada slot e a
 API confere a reserva novamente em transação no Firestore para não aceitar duas
-solicitações concorrentes acima da capacidade.
+solicitações concorrentes acima da capacidade. A hospedagem não usa grade por horário:
+usa os dias de hospedagem, duração em dias e a capacidade global da clínica.
 
 | Método | Caminho | Descrição |
 | --- | --- | --- |
@@ -327,11 +332,17 @@ solicitações concorrentes acima da capacidade.
 | `DELETE` | `/admin/disponibilidade/{servico}/{diaSemana}` | Fecha o serviço nesse dia |
 | `PUT` | `/admin/disponibilidade/{servico}/periodo?inicio=2027-05-18&fim=2027-05-24` | Cria exceções de disponibilidade para cada data do período (máximo de 31 dias) |
 | `DELETE` | `/admin/disponibilidade/{servico}/periodo?inicio=2027-05-18&fim=2027-05-24` | Remove as exceções de disponibilidade das datas do período |
+| `GET` | `/profissional/disponibilidade/padrao` | Consulta o padrão compartilhado de consulta e vacina |
+| `PUT` | `/profissional/disponibilidade/padrao` | Define os intervalos, duração e capacidade padrão compartilhados |
+| `DELETE` | `/profissional/disponibilidade/padrao` | Remove o padrão compartilhado |
 | `GET` | `/disponibilidade?servico=consulta&data=2027-05-18` | Lista slots e vagas disponíveis |
 
-Uma exceção por data tem prioridade sobre a regra recorrente do dia da semana. Ao
-removê-la, a regra semanal volta a ser usada. A aplicação em período não altera a
-configuração semanal; o intervalo inclui as datas inicial e final.
+As configurações semanais e por data prevalecem sobre o padrão compartilhado, nessa
+ordem. Sem regra específica, o padrão fornece intervalos, `duracaoMinutos` e `capacidade`
+para consulta e vacina. Sem qualquer configuração aplicável, a API não inventa horários
+e retorna `404`. Ao remover uma exceção por data, a regra semanal volta a ser usada.
+A aplicação em período não altera a configuração semanal; o intervalo inclui as datas
+inicial e final.
 
 Exemplo de configuração:
 
@@ -342,15 +353,47 @@ Exemplo de configuração:
     { "inicio": "13:00", "fim": "17:00" }
   ],
   "duracaoMinutos": 30,
-  "capacidade": 1
+  "capacidade": 1,
+  "continuarHorarioPadrao": false
 }
 ```
+
+O padrão usa o mesmo corpo, com exatamente dois intervalos que, em ordem cronológica,
+têm uma pausa estritamente maior que zero entre eles. O documento é salvo em
+`horariosFuncionamento/padrao_TODOS`; duração e capacidade servem como valores padrão
+compartilhados por consulta e vacina. Apenas profissionais e administradores podem
+consultar, alterar ou remover esse padrão.
+
+Uma regra semanal ou exceção por data pode definir `continuarHorarioPadrao: true`.
+Nesse caso, seus intervalos são unidos aos intervalos atuais do padrão em tempo de
+consulta, ordenando-os e juntando intervalos sobrepostos ou adjacentes. Duração e
+capacidade permanecem as da regra específica. Com o valor omitido ou `false`, a regra
+específica substitui o padrão. Em uma configuração em período com continuação ativada,
+somente a primeira data recebe essa opção; os dias seguintes não a herdam.
 
 `GET /disponibilidade` exige autenticação e retorna `duracaoMinutos` e uma lista com
 horário, capacidade e vagas disponíveis. Para consulta e vacina, solicitações
 pendentes/aprovadas ocupam a capacidade quando seus períodos se sobrepõem. Para
-hospedagem, informe `dataSaidaPrevista`; a capacidade é ocupada para cada dia no
-intervalo `[data, dataSaidaPrevista)`, e a saída real é registrada no check-out.
+hospedagem, informe `tempoHospedagemDias`; a capacidade é ocupada para cada dia da
+estadia, e a saída real é registrada no check-out.
+
+### Estado da clínica e capacidade de hospedagem
+
+| Método | Caminho | Descrição |
+| --- | --- | --- |
+| `GET` | `/profissional/clinica/status` | Consulta se a clínica está aberta |
+| `POST` | `/profissional/clinica/fechar` | Fecha a clínica |
+| `POST` | `/profissional/clinica/abrir` | Reabre a clínica |
+| `GET` | `/profissional/clinica/capacidade-hospedagem` | Consulta a capacidade máxima global |
+| `PUT` | `/profissional/clinica/capacidade-hospedagem` | Atualiza a capacidade máxima global |
+
+A consulta de status exige autenticação; abrir/fechar a clínica e consultar/alterar a
+capacidade exigem profissional ou administrador. Se não existir configuração de estado,
+a clínica é considerada aberta. Quando fechada, novas solicitações
+de agendamento de clientes recebem `503`; a equipe ainda pode atualizar o estado e
+agendamentos existentes continuam podendo ser cancelados. Para hospedagem, a capacidade
+é compartilhada por todos os dias da estadia e as solicitações concorrentes são
+serializadas para não exceder o limite configurado.
 
 ## Carteira vacinal e histórico clínico
 

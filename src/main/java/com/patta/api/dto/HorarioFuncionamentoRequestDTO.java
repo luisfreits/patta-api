@@ -19,8 +19,14 @@ public record HorarioFuncionamentoRequestDTO(
         @NotNull(message = "A capacidade é obrigatória.")
         @Min(value = 1, message = "A capacidade deve ser maior que zero.")
         @Max(value = 100, message = "A capacidade máxima é 100.")
-        Integer capacidade
+        Integer capacidade,
+        boolean continuarHorarioPadrao
 ) {
+    public HorarioFuncionamentoRequestDTO(
+            List<@Valid IntervaloHorarioDTO> intervalos, Integer duracaoMinutos, Integer capacidade) {
+        this(intervalos, duracaoMinutos, capacidade, false);
+    }
+
     public record IntervaloHorarioDTO(
             @NotNull(message = "O início do intervalo é obrigatório.")
             LocalTime inicio,
