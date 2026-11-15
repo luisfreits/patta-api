@@ -113,6 +113,89 @@ public class AgendamentoRepository {
         return agendamento;
     }
 
+    public List<AgendamentoModel> saveAllIfAvailable(List<AgendamentoModel> agendamentos, int capacidade)
+            throws ExecutionException, InterruptedException {
+        if (agendamentos.isEmpty()) {
+            return List.of();
+        }
+        if (agendamentos.size() == 1) {
+            return List.of(saveIfAvailable(agendamentos.getFirst(), capacidade));
+        }
+
+        List<DocumentReference> documentos = agendamentos.stream()
+                .map(agendamento -> agendamentos().document())
+                .toList();
+        for (int indice = 0; indice < agendamentos.size(); indice++) {
+            agendamentos.get(indice).setId(documentos.get(indice).getId());
+        }
+
+        AgendamentoModel referencia = agendamentos.getFirst();
+        DocumentReference trava = firestore.collection("travasReservas").document(referencia.getServico());
+        DocumentReference configClinica = firestore.collection(COLECAO_CONFIGURACAO).document("clinica");
+        boolean hospedagem = "hospedagem".equals(referencia.getServico());
+        try {
+            firestore.runTransaction(transaction -> {
+                DocumentSnapshot estadoTrava = transaction.get(trava).get();
+                Query consulta = agendamentos().whereEqualTo("servico", referencia.getServico());
+                List<QueryDocumentSnapshot> documentosExistentes =
+                        transaction.get(consulta).get().getDocuments();
+                List<AgendamentoModel> existentes = documentosExistentes.stream()
+                        .map(this::toModel)
+                        .filter(Objects::nonNull)
+                        .toList();
+
+                for (int indice = 0; indice < agendamentos.size(); indice++) {
+                    for (AgendamentoModel existente : existentes) {
+                        if (mesmoAgendamento(agendamentos.get(indice), existente)) {
+                            throw new AgendamentoDuplicadoException();
+                        }
+                    }
+                    for (int anterior = 0; anterior < indice; anterior++) {
+                        if (mesmoAgendamento(agendamentos.get(indice), agendamentos.get(anterior))) {
+                            throw new AgendamentoDuplicadoException();
+                        }
+                    }
+                }
+
+                if (hospedagem) {
+                    DocumentSnapshot config = transaction.get(configClinica).get();
+                    Long capacidadeHospedagem = config.exists() ? config.getLong("capacidadeHospedagem") : null;
+                    if (capacidadeHospedagem == null || capacidadeHospedagem <= 0) {
+                        throw new ConflitoReservaException();
+                    }
+                    LocalDateTime inicio = inicio(referencia);
+                    LocalDateTime fim = saidaPrevista(referencia, inicio);
+                    if (picoOcupacao(existentes.stream().filter(AgendamentoRepository::reservaAtiva).toList(),
+                            inicio, fim) + agendamentos.size() > capacidadeHospedagem) {
+                        throw new ConflitoReservaException();
+                    }
+                } else {
+                    long conflitantes = existentes.stream()
+                            .filter(AgendamentoRepository::reservaAtiva)
+                            .filter(existente -> conflita(referencia, existente))
+                            .count();
+                    if (conflitantes + agendamentos.size() > capacidade) {
+                        throw new ConflitoReservaException();
+                    }
+                }
+
+                long revisao = estadoTrava.exists() && estadoTrava.getLong("revisao") != null
+                        ? estadoTrava.getLong("revisao")
+                        : 0L;
+                transaction.set(trava, Map.of("revisao", revisao + 1));
+                for (int indice = 0; indice < agendamentos.size(); indice++) {
+                    transaction.set(documentos.get(indice), agendamentos.get(indice));
+                }
+                return null;
+            }).get();
+        } catch (ExecutionException exception) {
+            if (exception.getCause() instanceof AgendamentoDuplicadoException duplicado) throw duplicado;
+            if (exception.getCause() instanceof ConflitoReservaException conflito) throw conflito;
+            throw exception;
+        }
+        return List.copyOf(agendamentos);
+    }
+
     public int picoOcupacaoHospedagem(LocalDateTime inicio, LocalDateTime fim)
             throws ExecutionException, InterruptedException {
         return calcularPicoOcupacaoHospedagem(findByServico("hospedagem"), inicio, fim);

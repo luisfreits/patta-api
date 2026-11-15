@@ -23,10 +23,10 @@ public class AgendamentoController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public AgendamentoResponseDTO criar(@AuthenticationPrincipal String uid,
-                                        @Valid @RequestBody AgendamentoRequestDTO request)
+    public List<AgendamentoResponseDTO> criar(@AuthenticationPrincipal String uid,
+                                              @Valid @RequestBody AgendamentoRequestDTO request)
             throws ExecutionException, InterruptedException {
-        return agendamentoService.criar(uid, request);
+        return agendamentoService.criarVarios(uid, request);
     }
 
     @GetMapping

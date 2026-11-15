@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.ArrayList;
 import java.util.concurrent.ExecutionException;
 
 @RestController
@@ -40,13 +41,16 @@ public class ProfissionalController {
 
     @PostMapping("/{id}/novo")
     @ResponseStatus(HttpStatus.CREATED)
-    public ProfissionalAgendamentoResponseDTO criarAgendamento(
+    public List<ProfissionalAgendamentoResponseDTO> criarAgendamento(
             @AuthenticationPrincipal String uid,
             @PathVariable String id,
             @Valid @RequestBody ProfissionalAgendamentoRequestDTO request)
             throws ExecutionException, InterruptedException {
-        AgendamentoResponseDTO agendamento = agendamentoService.criarParaProfissional(uid, id, request);
-        return profissionalAgendamentoService.buscar(uid, agendamento);
+        List<ProfissionalAgendamentoResponseDTO> respostas = new ArrayList<>();
+        for (AgendamentoResponseDTO agendamento : agendamentoService.criarVariosParaProfissional(uid, id, request)) {
+            respostas.add(profissionalAgendamentoService.buscar(uid, agendamento));
+        }
+        return List.copyOf(respostas);
     }
 
     @PostMapping("/{id}/historico-clinico")

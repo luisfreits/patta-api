@@ -27,12 +27,12 @@ perfis cadastrados e os animais de todos os usuários:
 | `PUT` | `/admin/usuarios/{usuarioUid}` | Atualiza nome, telefone e e-mail de qualquer perfil | `200 OK` |
 | `GET` | `/admin/animais` | Lista animais e inclui `userId` para identificar o dono | `200 OK` |
 | `GET` | `/admin/agendamentos` | Lista todos os agendamentos para o painel administrativo | `200 OK` |
-| `POST` | `/admin/agendamentos` | Cria agendamento para um cliente e pet selecionados | `201 Created` |
+| `POST` | `/admin/agendamentos` | Cria agendamentos para um cliente e uma lista de pets | `201 Created` |
 
 As rotas `/admin/**` retornam `403` para usuários comuns. As listagens mostram o estado
 atual dos dados; não constituem um histórico cronológico de alterações. Para criar um
 agendamento, envie `usuarioId` e os campos de um agendamento dentro da propriedade
-`agendamento`. O backend valida que o pet selecionado pertence ao cliente informado.
+`agendamento`. O backend valida que todos os pets selecionados pertencem ao cliente informado.
 
 ## Cadastro e verificação de e-mail
 
@@ -205,7 +205,7 @@ inicial é `PENDENTE` e os timestamps são preenchidos pelo servidor.
 
 | Método | Caminho | Descrição | Sucesso |
 | --- | --- | --- | --- |
-| `POST` | `/agendamentos` | Cria uma solicitação para animal próprio | `201 Created` |
+| `POST` | `/agendamentos` | Cria solicitações para um ou mais animais próprios | `201 Created` |
 | `GET` | `/agendamentos` | Lista os agendamentos do usuário; UID administrativo lista todos | `200 OK` |
 | `GET` | `/admin/agendamentos` | Lista todos os agendamentos; exclusivo para administradores | `200 OK` |
 | `GET` | `/agendamentos/{id}` | Consulta um agendamento próprio; UID administrativo pode consultar qualquer um | `200 OK` |
@@ -215,14 +215,17 @@ inicial é `PENDENTE` e os timestamps são preenchidos pelo servidor.
 | `POST` | `/admin/agendamentos/{id}/check-in` | Registra a entrada/check-in de um agendamento aprovado | `200 OK` |
 | `POST` | `/admin/agendamentos/{id}/check-out` | Registra a saída/check-out de uma hospedagem | `200 OK` |
 | `GET` | `/profissional/agendamentos` | Profissionais veem dados mínimos dos agendamentos de usuários comuns; administradores veem os de todos os papéis | `200 OK` |
-| `POST` | `/profissional/agendamentos/{id}/novo` | Cria agendamento para usuário comum com base em um agendamento de referência | `201 Created` |
+| `POST` | `/profissional/agendamentos/{id}/novo` | Cria solicitações para um ou mais pets do tutor do agendamento de referência | `201 Created` |
 | `POST` | `/profissional/agendamentos/{id}/check-in` | Profissional ou administrador registra check-in | `200 OK` |
 | `POST` | `/profissional/agendamentos/{id}/check-out` | Profissional ou administrador registra check-out de hospedagem | `200 OK` |
 
-O POST recebe datas ISO (`yyyy-MM-dd`) e horários (`HH:mm`). Os serviços aceitos são
-`consulta`, `vacina` e `hospedagem`, em minúsculas. `animalId` precisa identificar um
-animal pertencente ao usuário autenticado. `observacoes` é opcional, com até 1000
-caracteres; data, horário e animal são obrigatórios.
+Os POSTs de criação recebem datas ISO (`yyyy-MM-dd`) e horários (`HH:mm`). Os serviços
+aceitos são `consulta`, `vacina` e `hospedagem`, em minúsculas. Informe `animalIds`
+com 1 a 20 IDs de animais pertencentes ao tutor; o backend cria um agendamento
+individual para cada pet e responde com uma lista. `observacoes` é opcional, com até
+1000 caracteres. Para manter compatibilidade, `animalId` (string) ainda é aceito nas
+rotas de cliente e administrador. Na rota profissional, `animalIds` é opcional; se
+omitido, usa o pet do agendamento `{id}` como referência.
 O horário precisa estar configurado e disponível. Para `hospedagem`, informe
 `tempoHospedagemDias` (mínimo de um dia); a saída prevista é calculada a partir da data
 de entrada. Registros antigos que contenham `dataSaidaPrevista` continuam sendo lidos.
@@ -239,37 +242,62 @@ Content-Type: application/json
 
 ```json
 {
-  "animalId": "id-do-animal",
+  "animalIds": ["id-do-animal-1", "id-do-animal-2"],
   "servico": "consulta",
   "data": "2027-05-18",
   "horario": "10:30",
-  "observacoes": "Consulta de rotina",
-  "dataSaidaPrevista": null
+  "observacoes": "Consulta de rotina"
 }
 ```
 
-Resposta `201` (datas de auditoria são exemplos):
+Resposta `201` (um objeto por pet; datas de auditoria são exemplos):
 
 ```json
-{
-  "id": "id-gerado-pelo-firestore",
-  "usuarioId": "uid-do-firebase",
-  "animalId": "id-do-animal",
-  "servico": "consulta",
-  "data": "2027-05-18",
-  "horario": "10:30:00",
-  "dataSaidaPrevista": null,
-  "duracaoMinutos": 30,
-  "status": "PENDENTE",
-  "observacoes": "Consulta de rotina",
-  "checkInEm": null,
-  "checkInPor": null,
-  "checkOutEm": null,
-  "checkOutPor": null,
-  "criadoEm": "2026-10-25T18:44:39Z",
-  "atualizadoEm": "2026-10-25T18:44:39Z"
-}
+[
+  {
+    "id": "agendamento-pet-1",
+    "usuarioId": "uid-do-firebase",
+    "animalId": "id-do-animal-1",
+    "servico": "consulta",
+    "data": "2027-05-18",
+    "horario": "10:30:00",
+    "dataSaidaPrevista": null,
+    "duracaoMinutos": 30,
+    "status": "PENDENTE",
+    "observacoes": "Consulta de rotina",
+    "checkInEm": null,
+    "checkInPor": null,
+    "checkOutEm": null,
+    "checkOutPor": null,
+    "criadoEm": "2026-10-25T18:44:39Z",
+    "atualizadoEm": "2026-10-25T18:44:39Z"
+  },
+  {
+    "id": "agendamento-pet-2",
+    "usuarioId": "uid-do-firebase",
+    "animalId": "id-do-animal-2",
+    "servico": "consulta",
+    "data": "2027-05-18",
+    "horario": "10:30:00",
+    "dataSaidaPrevista": null,
+    "duracaoMinutos": 30,
+    "status": "PENDENTE",
+    "observacoes": "Consulta de rotina",
+    "checkInEm": null,
+    "checkInPor": null,
+    "checkOutEm": null,
+    "checkOutPor": null,
+    "criadoEm": "2026-10-25T18:44:39Z",
+    "atualizadoEm": "2026-10-25T18:44:39Z"
+  }
+]
 ```
+
+`POST /admin/agendamentos` recebe o mesmo conteúdo dentro de `agendamento`, além de
+`usuarioId`. `POST /profissional/agendamentos/{id}/novo` recebe `animalIds`, `servico`,
+`data`, `horario` e `tempoHospedagemDias` quando aplicável; os animais devem pertencer
+ao tutor do agendamento de referência. Os três endpoints retornam arrays de agendamentos
+(`201`), inclusive quando houver apenas um pet.
 
 `GET /agendamentos` retorna uma lista com essa mesma estrutura, ordenada por data,
 horário e criação. Para clientes comuns, inclui somente seus agendamentos; para UIDs

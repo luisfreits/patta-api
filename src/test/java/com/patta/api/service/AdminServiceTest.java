@@ -1,5 +1,8 @@
 package com.patta.api.service;
 
+import com.patta.api.dto.AdminAgendamentoRequestDTO;
+import com.patta.api.dto.AgendamentoRequestDTO;
+import com.patta.api.dto.AgendamentoResponseDTO;
 import com.patta.api.model.AnimalModel;
 import com.patta.api.model.UserModel;
 import com.patta.api.repository.AnimalRepository;
@@ -9,6 +12,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Optional;
+import java.time.LocalDate;
+import java.time.LocalTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -80,5 +86,19 @@ class AdminServiceTest {
         assertEquals(List.of(), service.listarAgendamentos(ADMIN_UID));
 
         verify(agendamentoService).listarTodos(ADMIN_UID);
+    }
+
+    @Test
+    void administradorCriaAgendamentosParaListaDePetsDoCliente() throws Exception {
+        when(userRepository.findById(USER_UID)).thenReturn(Optional.of(UserModel.builder().id(USER_UID).build()));
+        AgendamentoRequestDTO request = new AgendamentoRequestDTO(
+                List.of("animal-1", "animal-2"), "consulta",
+                LocalDate.now().plusDays(1), LocalTime.NOON, null);
+        AdminAgendamentoRequestDTO adminRequest = new AdminAgendamentoRequestDTO(USER_UID, request);
+        when(agendamentoService.criarVariosParaUsuario(ADMIN_UID, USER_UID, request)).thenReturn(List.of());
+
+        assertEquals(List.of(), service.criarAgendamentos(ADMIN_UID, adminRequest));
+
+        verify(agendamentoService).criarVariosParaUsuario(ADMIN_UID, USER_UID, request);
     }
 }

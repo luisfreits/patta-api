@@ -27,18 +27,22 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
 
@@ -87,6 +91,30 @@ class AgendamentoServiceTest {
     }
 
     @Test
+    void criaUmAgendamentoIndependenteParaCadaPetDaSolicitacao() throws Exception {
+        when(animalService.buscar(UID, "animal-1")).thenReturn(animalResponse("animal-1"));
+        when(animalService.buscar(UID, "animal-2")).thenReturn(animalResponse("animal-2"));
+        when(disponibilidadeService.validarSlot(anyString(), any(), any())).thenReturn(disponibilidade());
+        AtomicInteger id = new AtomicInteger();
+        when(repository.saveAllIfAvailable(anyList(), anyInt())).thenAnswer(invocation -> {
+            List<AgendamentoModel> models = invocation.getArgument(0);
+            models.forEach(model -> model.setId("appointment-" + id.incrementAndGet()));
+            return models;
+        });
+
+        List<AgendamentoResponseDTO> response = service.criarVarios(UID,
+                new AgendamentoRequestDTO(List.of("animal-1", "animal-2"), "consulta",
+                        LocalDate.now().plusDays(2), LocalTime.of(10, 30), "Consulta de rotina"));
+
+        assertEquals(2, response.size());
+        assertEquals(List.of("animal-1", "animal-2"),
+                response.stream().map(AgendamentoResponseDTO::animalId).toList());
+        assertEquals(List.of("appointment-1", "appointment-2"),
+                response.stream().map(AgendamentoResponseDTO::id).toList());
+        verify(repository).saveAllIfAvailable(anyList(), anyInt());
+    }
+
+    @Test
     void bloqueiaCriacaoDeClienteQuandoClinicaEstaFechada() throws Exception {
         doThrow(new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                 ClinicaService.MENSAGEM_CLINICA_FECHADA))
@@ -120,6 +148,29 @@ class AgendamentoServiceTest {
 
         assertEquals("appointment-professional", response.id());
         verifyNoInteractions(clinicaRepository);
+    }
+
+    @Test
+    void profissionalCriaAgendamentoParaCadaPetDoTutorDeReferencia() throws Exception {
+        when(repository.findById("reference")).thenReturn(Optional.of(model("reference", UID, "PENDENTE")));
+        when(animalService.buscar(UID, "animal-1")).thenReturn(animalResponse("animal-1"));
+        when(animalService.buscar(UID, "animal-2")).thenReturn(animalResponse("animal-2"));
+        when(disponibilidadeService.validarSlot(anyString(), any(), any())).thenReturn(disponibilidade());
+        AtomicInteger id = new AtomicInteger();
+        when(repository.saveAllIfAvailable(anyList(), anyInt())).thenAnswer(invocation -> {
+            List<AgendamentoModel> models = invocation.getArgument(0);
+            models.forEach(model -> model.setId("professional-appointment-" + id.incrementAndGet()));
+            return models;
+        });
+
+        List<AgendamentoResponseDTO> response = service.criarVariosParaProfissional(
+                "vet-uid", "reference",
+                new ProfissionalAgendamentoRequestDTO(List.of("animal-1", "animal-2"), "consulta",
+                        LocalDate.now().plusDays(2), LocalTime.of(10, 30), null));
+
+        assertEquals(List.of("animal-1", "animal-2"),
+                response.stream().map(AgendamentoResponseDTO::animalId).toList());
+        verify(repository).saveAllIfAvailable(anyList(), anyInt());
     }
 
     @Test
@@ -344,6 +395,19 @@ class AgendamentoServiceTest {
 
         assertFalse(VALIDATION_FACTORY.getValidator().validate(semDias).isEmpty());
         assertFalse(VALIDATION_FACTORY.getValidator().validate(diasEmConsulta).isEmpty());
+    }
+
+    @Test
+    void dtoAceitaListaDePetsValidaERejeitaDuplicatas() {
+        AgendamentoRequestDTO valid = new AgendamentoRequestDTO(
+                List.of("animal-1", "animal-2"), "consulta",
+                LocalDate.now().plusDays(1), LocalTime.NOON, null);
+        AgendamentoRequestDTO duplicate = new AgendamentoRequestDTO(
+                List.of("animal-1", " animal-1 "), "consulta",
+                LocalDate.now().plusDays(1), LocalTime.NOON, null);
+
+        assertTrue(VALIDATION_FACTORY.getValidator().validate(valid).isEmpty());
+        assertFalse(VALIDATION_FACTORY.getValidator().validate(duplicate).isEmpty());
     }
 
     @Test

@@ -64,6 +64,14 @@ public class AdminService {
         return agendamentoService.criarParaUsuario(uid, request.usuarioId(), request.agendamento());
     }
 
+    public List<AgendamentoResponseDTO> criarAgendamentos(String uid, AdminAgendamentoRequestDTO request)
+            throws ExecutionException, InterruptedException {
+        exigirAdministrador(uid);
+        userRepository.findById(request.usuarioId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuário não encontrado."));
+        return agendamentoService.criarVariosParaUsuario(uid, request.usuarioId(), request.agendamento());
+    }
+
     public AgendamentoResponseDTO marcarCheckIn(String uid, String agendamentoId)
             throws ExecutionException, InterruptedException {
         exigirAdministrador(uid);

@@ -57,11 +57,11 @@ public class AdminController {
 
     @PostMapping("/agendamentos")
     @ResponseStatus(HttpStatus.CREATED)
-    public AgendamentoResponseDTO criarAgendamento(
+    public List<AgendamentoResponseDTO> criarAgendamento(
             @AuthenticationPrincipal String uid,
             @Valid @RequestBody AdminAgendamentoRequestDTO request)
             throws ExecutionException, InterruptedException {
-        return adminService.criarAgendamento(uid, request);
+        return adminService.criarAgendamentos(uid, request);
     }
 
     @PostMapping("/agendamentos/{id}/check-in")
