@@ -9,6 +9,7 @@ import com.patta.api.dto.UserUpdateDTO;
 import com.patta.api.model.UserModel;
 import com.patta.api.repository.AgendamentoRepository;
 import com.patta.api.repository.AnimalRepository;
+import com.patta.api.repository.ImagemRepository;
 import com.patta.api.repository.UserRepository;
 import com.patta.api.repository.RegistroClinicoRepository;
 import com.patta.api.repository.VacinaRepository;
@@ -32,6 +33,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final AnimalRepository animalRepository;
+    private final ImagemRepository imagemRepository;
     private final AgendamentoRepository agendamentoRepository;
     private final RegistroClinicoRepository registroClinicoRepository;
     private final VacinaRepository vacinaRepository;
@@ -169,6 +171,7 @@ public class UserService {
         agendamentoRepository.deleteByUsuarioId(uid);
         registroClinicoRepository.deleteByUsuarioId(uid);
         vacinaRepository.deleteByUsuarioId(uid);
+        imagemRepository.deleteById(uid);
         userRepository.deleteById(uid);
         try {
             firebaseAuth.deleteUser(uid);

@@ -6,6 +6,7 @@ import com.patta.api.dto.UserUpdateDTO;
 import com.patta.api.model.UserModel;
 import com.patta.api.repository.AgendamentoRepository;
 import com.patta.api.repository.AnimalRepository;
+import com.patta.api.repository.ImagemRepository;
 import com.patta.api.repository.UserRepository;
 import com.patta.api.repository.RegistroClinicoRepository;
 import com.patta.api.repository.VacinaRepository;
@@ -32,6 +33,7 @@ class UserServiceTest {
     void removeAnimaisEAgendamentosAntesDeRemoverPerfilEAContaFirebase() throws Exception {
         UserRepository userRepository = mock(UserRepository.class);
         AnimalRepository animalRepository = mock(AnimalRepository.class);
+        ImagemRepository imagemRepository = mock(ImagemRepository.class);
         AgendamentoRepository agendamentoRepository = mock(AgendamentoRepository.class);
         RegistroClinicoRepository registroClinicoRepository = mock(RegistroClinicoRepository.class);
         VacinaRepository vacinaRepository = mock(VacinaRepository.class);
@@ -39,7 +41,7 @@ class UserServiceTest {
         LoginService loginService = mock(LoginService.class);
         EmailService emailService = mock(EmailService.class);
         UserService userService = new UserService(
-                userRepository, animalRepository, agendamentoRepository, registroClinicoRepository,
+                userRepository, animalRepository, imagemRepository, agendamentoRepository, registroClinicoRepository,
                 vacinaRepository, firebaseAuth, loginService, emailService, new PapelUsuarioService(""));
         when(userRepository.findById("uid")).thenReturn(Optional.of(
                 UserModel.builder().id("uid").build()));
@@ -47,11 +49,12 @@ class UserServiceTest {
         userService.deletarMinhaConta("uid");
 
         InOrder ordem = inOrder(animalRepository, agendamentoRepository, registroClinicoRepository,
-                vacinaRepository, userRepository, firebaseAuth);
+                vacinaRepository, imagemRepository, userRepository, firebaseAuth);
         ordem.verify(animalRepository).deleteByUserId("uid");
         ordem.verify(agendamentoRepository).deleteByUsuarioId("uid");
         ordem.verify(registroClinicoRepository).deleteByUsuarioId("uid");
         ordem.verify(vacinaRepository).deleteByUsuarioId("uid");
+        ordem.verify(imagemRepository).deleteById("uid");
         ordem.verify(userRepository).deleteById("uid");
         ordem.verify(firebaseAuth).deleteUser("uid");
     }
@@ -60,6 +63,7 @@ class UserServiceTest {
     void falhaAoExcluirAnimaisImpedeRemoverPerfilEAConta() throws Exception {
         UserRepository userRepository = mock(UserRepository.class);
         AnimalRepository animalRepository = mock(AnimalRepository.class);
+        ImagemRepository imagemRepository = mock(ImagemRepository.class);
         AgendamentoRepository agendamentoRepository = mock(AgendamentoRepository.class);
         RegistroClinicoRepository registroClinicoRepository = mock(RegistroClinicoRepository.class);
         VacinaRepository vacinaRepository = mock(VacinaRepository.class);
@@ -67,7 +71,7 @@ class UserServiceTest {
         LoginService loginService = mock(LoginService.class);
         EmailService emailService = mock(EmailService.class);
         UserService userService = new UserService(
-                userRepository, animalRepository, agendamentoRepository, registroClinicoRepository,
+                userRepository, animalRepository, imagemRepository, agendamentoRepository, registroClinicoRepository,
                 vacinaRepository, firebaseAuth, loginService, emailService, new PapelUsuarioService(""));
         when(userRepository.findById("uid")).thenReturn(Optional.of(
                 UserModel.builder().id("uid").build()));
@@ -148,6 +152,7 @@ class UserServiceTest {
         UserService userService = new UserService(
                 userRepository,
                 mock(AnimalRepository.class),
+                mock(ImagemRepository.class),
                 mock(AgendamentoRepository.class),
                 mock(RegistroClinicoRepository.class),
                 mock(VacinaRepository.class),
@@ -179,6 +184,7 @@ class UserServiceTest {
         return new UserService(
                 userRepository,
                 mock(AnimalRepository.class),
+                mock(ImagemRepository.class),
                 mock(AgendamentoRepository.class),
                 mock(RegistroClinicoRepository.class),
                 mock(VacinaRepository.class),
