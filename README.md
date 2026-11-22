@@ -407,6 +407,7 @@ estadia, e a saída real é registrada no check-out.
 
 ### Estado da clínica e capacidade de hospedagem
 
+
 | Método | Caminho | Descrição |
 | --- | --- | --- |
 | `GET` | `/profissional/clinica/status` | Consulta se a clínica está aberta |
