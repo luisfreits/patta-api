@@ -198,8 +198,9 @@ nenhuma resposta de erro inclui stack trace, token ou credenciais.
 Os endpoints de agendamento exigem um Firebase ID token válido e e-mail verificado,
 seguindo as regras gerais de [autenticação](#autenticação) usadas pelas outras rotas
 protegidas. A coleção Firestore é `agendamentos`. A API não aceita do cliente `usuarioId`,
-`status`, `id` ou datas de auditoria: o proprietário vem do UID autenticado, o estado
-inicial é `PENDENTE` e os timestamps são preenchidos pelo servidor.
+`status`, `id` ou datas de auditoria: o proprietário vem do UID autenticado e os
+timestamps são preenchidos pelo servidor. Solicitações de clientes começam como
+`PENDENTE`; reagendamentos feitos pela equipe são aprovados pelo servidor.
 
 ### Endpoints
 
@@ -221,14 +222,17 @@ inicial é `PENDENTE` e os timestamps são preenchidos pelo servidor.
 
 Os POSTs de criação recebem datas ISO (`yyyy-MM-dd`) e horários (`HH:mm`). Os serviços
 aceitos são `consulta`, `vacina` e `hospedagem`, em minúsculas. Informe `animalIds`
-com 1 a 20 IDs de animais pertencentes ao tutor; o backend cria um agendamento
-individual para cada pet e responde com uma lista. `observacoes` é opcional, com até
+com 1 a 20 IDs de animais pertencentes ao tutor. Para `consulta` e `vacina`, o backend
+cria um agendamento individual para cada pet; para `hospedagem`, cria um único agendamento
+com todos os pets. A resposta continua sendo uma lista. `observacoes` é opcional, com até
 1000 caracteres. Para manter compatibilidade, `animalId` (string) ainda é aceito nas
 rotas de cliente e administrador. Na rota profissional, `animalIds` é opcional; se
 omitido, usa o pet do agendamento `{id}` como referência.
 O horário precisa estar configurado e disponível. Para `hospedagem`, informe
 `tempoHospedagemDias` (mínimo de um dia); a saída prevista é calculada a partir da data
 de entrada. Registros antigos que contenham `dataSaidaPrevista` continuam sendo lidos.
+Cada resposta mantém `animalId` para compatibilidade (o primeiro pet) e inclui `animalIds`
+com todos os pets daquele agendamento. A capacidade de hospedagem é contabilizada por pet.
 Não é permitido criar mais de um agendamento ativo para o mesmo pet, serviço, data e
 horário. Agendamentos rejeitados ou cancelados não impedem uma nova solicitação.
 Agendamentos em outra data ou horário continuam permitidos; o sistema não mantém
@@ -296,8 +300,11 @@ Resposta `201` (um objeto por pet; datas de auditoria são exemplos):
 `POST /admin/agendamentos` recebe o mesmo conteúdo dentro de `agendamento`, além de
 `usuarioId`. `POST /profissional/agendamentos/{id}/novo` recebe `animalIds`, `servico`,
 `data`, `horario` e `tempoHospedagemDias` quando aplicável; os animais devem pertencer
-ao tutor do agendamento de referência. Os três endpoints retornam arrays de agendamentos
-(`201`), inclusive quando houver apenas um pet.
+ao tutor do agendamento de referência. Se `animalIds` for omitido, o reagendamento mantém
+os pets do agendamento de referência. A nova reserva profissional já é aprovada e o
+agendamento original é cancelado na mesma transação; falhas de disponibilidade ou um
+original já iniciado/encerrado preservam o estado anterior. Os três endpoints retornam
+arrays de agendamentos (`201`), inclusive quando houver apenas um pet.
 
 `GET /agendamentos` retorna uma lista com essa mesma estrutura, ordenada por data,
 horário e criação. Para clientes comuns, inclui somente seus agendamentos; para UIDs
@@ -402,8 +409,8 @@ somente a primeira data recebe essa opção; os dias seguintes não a herdam.
 `GET /disponibilidade` exige autenticação e retorna `duracaoMinutos` e uma lista com
 horário, capacidade e vagas disponíveis. Para consulta e vacina, solicitações
 pendentes/aprovadas ocupam a capacidade quando seus períodos se sobrepõem. Para
-hospedagem, informe `tempoHospedagemDias`; a capacidade é ocupada para cada dia da
-estadia, e a saída real é registrada no check-out.
+hospedagem, informe `tempoHospedagemDias`; a capacidade é ocupada por pet para cada dia
+da estadia, e a saída real é registrada no check-out.
 
 ### Estado da clínica e capacidade de hospedagem
 

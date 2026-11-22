@@ -1,48 +1,50 @@
+
 package com.patta.api.config;
 
-import java.util.List;
 import java.util.Arrays;
+import java.util.List;
 import java.util.stream.Stream;
 
 /**
- * Prefixos das rotas que não exigem token.
- *
- * Fica num único lugar para que o filtro de token e as regras do Spring Security
- * nunca fiquem diferentes entre si.
+ * Centraliza as rotas públicas e as exceções de autenticação.
  */
 public final class RotasPublicas {
 
     private static final List<String> PREFIXOS = List.of("/auth", "/cadastro");
+
     public static final String ROTA_CONTATO = "/contato";
     private static final List<String> ROTAS_PUBLICAS_EXATAS = List.of(ROTA_CONTATO);
+
     public static final String ROTA_REENVIO_VERIFICACAO = "/auth/verificacao/reenviar";
     public static final String ROTA_STATUS_VERIFICACAO = "/auth/verificacao/status";
     public static final String ROTA_PERFIL_AUTENTICADO = "/auth/me";
+
     public static final String[] ROTAS_AUTENTICADAS = {
-            ROTA_REENVIO_VERIFICACAO,
-            ROTA_STATUS_VERIFICACAO,
-            ROTA_PERFIL_AUTENTICADO
+        ROTA_REENVIO_VERIFICACAO,
+        ROTA_STATUS_VERIFICACAO,
+        ROTA_PERFIL_AUTENTICADO
     };
 
-    /** Padrões no formato do Spring Security, por exemplo "/auth/**". */
+    /** Padrões utilizados pelo Spring Security. */
     public static final String[] PADROES = Stream.concat(
-                    PREFIXOS.stream().map(prefixo -> prefixo + "/**"),
-                    ROTAS_PUBLICAS_EXATAS.stream())
-            .toArray(String[]::new);
+            PREFIXOS.stream().map(p -> p + "/**"),
+            ROTAS_PUBLICAS_EXATAS.stream()
+    ).toArray(String[]::new);
 
     private RotasPublicas() {
-        // Classe utilitária: não pode ser instanciada
     }
 
-    /** Retorna true se o caminho é o prefixo exato ou está dentro de um prefixo público. */
+    /** Verifica se uma rota dispensa autenticação. */
     public static boolean isPublica(String caminho) {
-        return Arrays.stream(ROTAS_AUTENTICADAS).noneMatch(caminho::equals)
-                && (ROTAS_PUBLICAS_EXATAS.contains(caminho) || PREFIXOS.stream()
-                .anyMatch(prefixo -> caminho.equals(prefixo) || caminho.startsWith(prefixo + "/")));
+        return !Arrays.asList(ROTAS_AUTENTICADAS).contains(caminho)
+                && (ROTAS_PUBLICAS_EXATAS.contains(caminho)
+                || PREFIXOS.contains(caminho)
+                || PREFIXOS.stream().anyMatch(p -> caminho.startsWith(p + "/")));
     }
 
-    /** Rotas autenticadas que precisam funcionar antes da confirmação do e-mail. */
+    /** Verifica se uma conta não verificada pode acessar a rota. */
     public static boolean permiteContaNaoVerificada(String caminho) {
-        return ROTA_REENVIO_VERIFICACAO.equals(caminho) || ROTA_STATUS_VERIFICACAO.equals(caminho);
+        return ROTA_REENVIO_VERIFICACAO.equals(caminho)
+                || ROTA_STATUS_VERIFICACAO.equals(caminho);
     }
 }

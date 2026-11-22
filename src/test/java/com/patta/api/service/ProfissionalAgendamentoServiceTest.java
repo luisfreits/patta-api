@@ -87,12 +87,42 @@ class ProfissionalAgendamentoServiceTest {
                 result.getFirst().dataSaidaPrevista());
     }
 
+    @Test
+    void profissionalVeOsNomesDeTodosOsPetsDaHospedagemAgrupada() throws Exception {
+        AgendamentoService agendamentoService = mock(AgendamentoService.class);
+        AnimalRepository animalRepository = mock(AnimalRepository.class);
+        UserRepository userRepository = mock(UserRepository.class);
+        ProfissionalAgendamentoService service = new ProfissionalAgendamentoService(
+                agendamentoService, animalRepository, userRepository,
+                new PapelUsuarioService("admin-uid", "vet-uid"));
+
+        when(agendamentoService.listarParaEquipe("vet-uid")).thenReturn(List.of(
+                agendamento("booking-group", "user-uid", "pet-1", "hospedagem",
+                        List.of("pet-1", "pet-2"))));
+        when(userRepository.findById("user-uid"))
+                .thenReturn(Optional.of(UserModel.builder().id("user-uid").nome("Ana").build()));
+        when(animalRepository.findById("pet-1"))
+                .thenReturn(Optional.of(AnimalModel.builder().id("pet-1").nome("Rex").build()));
+        when(animalRepository.findById("pet-2"))
+                .thenReturn(Optional.of(AnimalModel.builder().id("pet-2").nome("Luna").build()));
+
+        List<ProfissionalAgendamentoResponseDTO> result = service.listar("vet-uid");
+
+        assertEquals(1, result.size());
+        assertEquals("Rex, Luna", result.getFirst().petNome());
+    }
+
     private AgendamentoResponseDTO agendamento(String id, String usuarioId, String animalId, String servico) {
+        return agendamento(id, usuarioId, animalId, servico, List.of(animalId));
+    }
+
+    private AgendamentoResponseDTO agendamento(String id, String usuarioId, String animalId, String servico,
+                                                List<String> animalIds) {
         return new AgendamentoResponseDTO(
                 id, usuarioId, animalId, servico, LocalDate.of(2026, 11, 2), LocalTime.of(10, 30),
                 "hospedagem".equals(servico) ? LocalDateTime.of(2026, 11, 5, 10, 30) : null,
                 "hospedagem".equals(servico) ? 3 : null, false, null,
                 30, "APROVADO", "texto privado", null, null, null, null,
-                Instant.parse("2026-11-01T10:00:00Z"), Instant.parse("2026-11-01T10:00:00Z"));
+                Instant.parse("2026-11-01T10:00:00Z"), Instant.parse("2026-11-01T10:00:00Z"), animalIds);
     }
 }

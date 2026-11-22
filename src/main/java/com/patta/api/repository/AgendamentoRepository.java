@@ -17,6 +17,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -90,7 +91,8 @@ public class AgendamentoRepository {
                     LocalDateTime inicio = inicio(agendamento);
                     LocalDateTime fim = saidaPrevista(agendamento, inicio);
                     if (capacidadeHospedagem == null || capacidadeHospedagem <= 0
-                            || picoOcupacao(hospedagensAtivas, inicio, fim) >= capacidadeHospedagem) {
+                            || picoOcupacao(hospedagensAtivas, inicio, fim)
+                            + quantidadePets(agendamento) > capacidadeHospedagem) {
                         throw new ConflitoReservaException();
                     }
                 } else if (reservasConflitantes >= capacidade) {
@@ -115,10 +117,16 @@ public class AgendamentoRepository {
 
     public List<AgendamentoModel> saveAllIfAvailable(List<AgendamentoModel> agendamentos, int capacidade)
             throws ExecutionException, InterruptedException {
+        return saveAllIfAvailable(agendamentos, capacidade, null);
+    }
+
+    public List<AgendamentoModel> saveAllIfAvailable(List<AgendamentoModel> agendamentos, int capacidade,
+                                                     String agendamentoSubstituidoId)
+            throws ExecutionException, InterruptedException {
         if (agendamentos.isEmpty()) {
             return List.of();
         }
-        if (agendamentos.size() == 1) {
+        if (agendamentos.size() == 1 && agendamentoSubstituidoId == null) {
             return List.of(saveIfAvailable(agendamentos.getFirst(), capacidade));
         }
 
@@ -133,15 +141,40 @@ public class AgendamentoRepository {
         DocumentReference trava = firestore.collection("travasReservas").document(referencia.getServico());
         DocumentReference configClinica = firestore.collection(COLECAO_CONFIGURACAO).document("clinica");
         boolean hospedagem = "hospedagem".equals(referencia.getServico());
+        DocumentReference agendamentoSubstituido = agendamentoSubstituidoId == null
+                ? null
+                : agendamentos().document(agendamentoSubstituidoId);
         try {
             firestore.runTransaction(transaction -> {
                 DocumentSnapshot estadoTrava = transaction.get(trava).get();
+                DocumentSnapshot original = agendamentoSubstituido == null
+                        ? null
+                        : transaction.get(agendamentoSubstituido).get();
+                if (original != null && !original.exists()) {
+                    throw new AgendamentoSubstituidoException();
+                }
+                AgendamentoModel reservaSubstituida = original == null ? null : toModel(original);
+                if (original != null && (reservaSubstituida == null
+                        || !reservaAtiva(reservaSubstituida)
+                        || reservaSubstituida.getCheckInEm() != null
+                        || reservaSubstituida.getCheckOutEm() != null)) {
+                    throw new AgendamentoSubstituidoException();
+                }
+                DocumentReference travaOriginal = reservaSubstituida == null
+                        || Objects.equals(reservaSubstituida.getServico(), referencia.getServico())
+                        ? null
+                        : firestore.collection("travasReservas").document(reservaSubstituida.getServico());
+                DocumentSnapshot estadoTravaOriginal = travaOriginal == null
+                        ? null
+                        : transaction.get(travaOriginal).get();
                 Query consulta = agendamentos().whereEqualTo("servico", referencia.getServico());
                 List<QueryDocumentSnapshot> documentosExistentes =
                         transaction.get(consulta).get().getDocuments();
                 List<AgendamentoModel> existentes = documentosExistentes.stream()
                         .map(this::toModel)
                         .filter(Objects::nonNull)
+                        .filter(existente -> !Objects.equals(
+                                existente.getId(), agendamentoSubstituidoId))
                         .toList();
 
                 for (int indice = 0; indice < agendamentos.size(); indice++) {
@@ -165,8 +198,11 @@ public class AgendamentoRepository {
                     }
                     LocalDateTime inicio = inicio(referencia);
                     LocalDateTime fim = saidaPrevista(referencia, inicio);
+                    int petsSolicitados = agendamentos.stream()
+                            .mapToInt(AgendamentoRepository::quantidadePets)
+                            .sum();
                     if (picoOcupacao(existentes.stream().filter(AgendamentoRepository::reservaAtiva).toList(),
-                            inicio, fim) + agendamentos.size() > capacidadeHospedagem) {
+                            inicio, fim) + petsSolicitados > capacidadeHospedagem) {
                         throw new ConflitoReservaException();
                     }
                 } else {
@@ -183,14 +219,27 @@ public class AgendamentoRepository {
                         ? estadoTrava.getLong("revisao")
                         : 0L;
                 transaction.set(trava, Map.of("revisao", revisao + 1));
+                if (travaOriginal != null) {
+                    long revisaoOriginal = estadoTravaOriginal.exists()
+                            && estadoTravaOriginal.getLong("revisao") != null
+                            ? estadoTravaOriginal.getLong("revisao")
+                            : 0L;
+                    transaction.set(travaOriginal, Map.of("revisao", revisaoOriginal + 1));
+                }
                 for (int indice = 0; indice < agendamentos.size(); indice++) {
                     transaction.set(documentos.get(indice), agendamentos.get(indice));
+                }
+                if (original != null) {
+                    transaction.update(original.getReference(), Map.of(
+                            "status", "CANCELADO",
+                            "atualizadoEm", new Date()));
                 }
                 return null;
             }).get();
         } catch (ExecutionException exception) {
             if (exception.getCause() instanceof AgendamentoDuplicadoException duplicado) throw duplicado;
             if (exception.getCause() instanceof ConflitoReservaException conflito) throw conflito;
+            if (exception.getCause() instanceof AgendamentoSubstituidoException substituido) throw substituido;
             throw exception;
         }
         return List.copyOf(agendamentos);
@@ -272,10 +321,21 @@ public class AgendamentoRepository {
         if ("REJEITADO".equals(existente.getStatus()) || "CANCELADO".equals(existente.getStatus())) {
             return false;
         }
-        return Objects.equals(novo.getAnimalId(), existente.getAnimalId())
+        return animais(novo).stream().anyMatch(animais(existente)::contains)
                 && Objects.equals(novo.getServico(), existente.getServico())
                 && Objects.equals(LocalDate.parse(novo.getData()), LocalDate.parse(existente.getData()))
                 && Objects.equals(LocalTime.parse(novo.getHorario()), LocalTime.parse(existente.getHorario()));
+    }
+
+    private static List<String> animais(AgendamentoModel agendamento) {
+        return agendamento.getAnimalIds() == null || agendamento.getAnimalIds().isEmpty()
+                ? agendamento.getAnimalId() == null ? List.of() : List.of(agendamento.getAnimalId())
+                : agendamento.getAnimalIds();
+    }
+
+    private static int quantidadePets(AgendamentoModel agendamento) {
+        int quantidade = (int) animais(agendamento).stream().filter(Objects::nonNull).distinct().count();
+        return quantidade == 0 ? 1 : quantidade;
     }
 
     private boolean conflita(AgendamentoModel nova, AgendamentoModel existente) {
@@ -299,6 +359,10 @@ public class AgendamentoRepository {
     private static int picoOcupacao(List<AgendamentoModel> reservas, LocalDateTime inicio, LocalDateTime fim) {
         List<EventoOcupacao> eventos = new ArrayList<>();
         for (AgendamentoModel reserva : reservas) {
+            int quantidadePets = quantidadePets(reserva);
+            if (quantidadePets == 0) {
+                continue;
+            }
             LocalDateTime inicioReserva = inicio(reserva);
             LocalDateTime fimReserva = reserva.getCheckInEm() != null && reserva.getCheckOutEm() == null
                     ? LocalDateTime.MAX
@@ -306,8 +370,8 @@ public class AgendamentoRepository {
             LocalDateTime inicioSobreposto = inicioReserva.isAfter(inicio) ? inicioReserva : inicio;
             LocalDateTime fimSobreposto = fimReserva.isBefore(fim) ? fimReserva : fim;
             if (inicioSobreposto.isBefore(fimSobreposto)) {
-                eventos.add(new EventoOcupacao(inicioSobreposto, 1));
-                eventos.add(new EventoOcupacao(fimSobreposto, -1));
+                eventos.add(new EventoOcupacao(inicioSobreposto, quantidadePets));
+                eventos.add(new EventoOcupacao(fimSobreposto, -quantidadePets));
             }
         }
         eventos.sort(Comparator.comparing(EventoOcupacao::instante)
@@ -348,5 +412,8 @@ public class AgendamentoRepository {
     }
 
     public static final class AgendamentoDuplicadoException extends RuntimeException {
+    }
+
+    public static final class AgendamentoSubstituidoException extends RuntimeException {
     }
 }

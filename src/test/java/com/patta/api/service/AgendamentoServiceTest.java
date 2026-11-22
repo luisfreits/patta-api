@@ -96,7 +96,7 @@ class AgendamentoServiceTest {
         when(animalService.buscar(UID, "animal-2")).thenReturn(animalResponse("animal-2"));
         when(disponibilidadeService.validarSlot(anyString(), any(), any())).thenReturn(disponibilidade());
         AtomicInteger id = new AtomicInteger();
-        when(repository.saveAllIfAvailable(anyList(), anyInt())).thenAnswer(invocation -> {
+        when(repository.saveAllIfAvailable(anyList(), anyInt(), any())).thenAnswer(invocation -> {
             List<AgendamentoModel> models = invocation.getArgument(0);
             models.forEach(model -> model.setId("appointment-" + id.incrementAndGet()));
             return models;
@@ -111,7 +111,29 @@ class AgendamentoServiceTest {
                 response.stream().map(AgendamentoResponseDTO::animalId).toList());
         assertEquals(List.of("appointment-1", "appointment-2"),
                 response.stream().map(AgendamentoResponseDTO::id).toList());
-        verify(repository).saveAllIfAvailable(anyList(), anyInt());
+        verify(repository).saveAllIfAvailable(anyList(), anyInt(), org.mockito.ArgumentMatchers.isNull());
+    }
+
+    @Test
+    void criaUmaUnicaHospedagemComTodosOsPetsDaSolicitacao() throws Exception {
+        when(animalService.buscar(UID, "animal-1")).thenReturn(animalResponse("animal-1"));
+        when(animalService.buscar(UID, "animal-2")).thenReturn(animalResponse("animal-2"));
+        when(repository.saveIfAvailable(any(AgendamentoModel.class), anyInt()))
+                .thenAnswer(invocation -> {
+                    AgendamentoModel model = invocation.getArgument(0);
+                    model.setId("boarding-group");
+                    return model;
+                });
+
+        List<AgendamentoResponseDTO> response = service.criarVarios(UID,
+                new AgendamentoRequestDTO(List.of("animal-1", "animal-2"), "hospedagem",
+                        LocalDate.now().plusDays(2), LocalTime.MIDNIGHT, null, 3));
+
+        assertEquals(1, response.size());
+        assertEquals("animal-1", response.getFirst().animalId());
+        assertEquals(List.of("animal-1", "animal-2"), response.getFirst().animalIds());
+        verify(repository).saveIfAvailable(any(AgendamentoModel.class), anyInt());
+        verify(repository, org.mockito.Mockito.never()).saveAllIfAvailable(anyList(), anyInt());
     }
 
     @Test
@@ -157,9 +179,12 @@ class AgendamentoServiceTest {
         when(animalService.buscar(UID, "animal-2")).thenReturn(animalResponse("animal-2"));
         when(disponibilidadeService.validarSlot(anyString(), any(), any())).thenReturn(disponibilidade());
         AtomicInteger id = new AtomicInteger();
-        when(repository.saveAllIfAvailable(anyList(), anyInt())).thenAnswer(invocation -> {
+        when(repository.saveAllIfAvailable(anyList(), anyInt(), any())).thenAnswer(invocation -> {
             List<AgendamentoModel> models = invocation.getArgument(0);
-            models.forEach(model -> model.setId("professional-appointment-" + id.incrementAndGet()));
+            models.forEach(model -> {
+                model.setId("professional-appointment-" + id.incrementAndGet());
+                assertEquals(AgendamentoStatus.APROVADO.name(), model.getStatus());
+            });
             return models;
         });
 
@@ -170,7 +195,7 @@ class AgendamentoServiceTest {
 
         assertEquals(List.of("animal-1", "animal-2"),
                 response.stream().map(AgendamentoResponseDTO::animalId).toList());
-        verify(repository).saveAllIfAvailable(anyList(), anyInt());
+        verify(repository).saveAllIfAvailable(anyList(), anyInt(), org.mockito.ArgumentMatchers.eq("reference"));
     }
 
     @Test
@@ -229,10 +254,12 @@ class AgendamentoServiceTest {
         when(repository.findById("referencia")).thenReturn(Optional.of(referencia));
         when(animalService.buscar(UID, "animal-1")).thenReturn(animalResponse("animal-1"));
         when(disponibilidadeService.validarSlot(anyString(), any(), any())).thenReturn(disponibilidade());
-        when(repository.saveIfAvailable(any(AgendamentoModel.class), anyInt())).thenAnswer(invocation -> {
-            AgendamentoModel novo = invocation.getArgument(0);
+        when(repository.saveAllIfAvailable(anyList(), anyInt(), any())).thenAnswer(invocation -> {
+            List<AgendamentoModel> novos = invocation.getArgument(0);
+            AgendamentoModel novo = novos.getFirst();
             novo.setId("profissional-novo");
-            return novo;
+            assertEquals(AgendamentoStatus.APROVADO.name(), novo.getStatus());
+            return novos;
         });
         ProfissionalAgendamentoRequestDTO request = new ProfissionalAgendamentoRequestDTO(
                 "consulta", LocalDate.now().plusDays(2), LocalTime.of(11, 0), null);
@@ -242,6 +269,7 @@ class AgendamentoServiceTest {
         assertEquals(UID, response.usuarioId());
         assertEquals("animal-1", response.animalId());
         verify(animalService).buscar(UID, "animal-1");
+        verify(repository).saveAllIfAvailable(anyList(), anyInt(), org.mockito.ArgumentMatchers.eq("referencia"));
     }
 
     @Test

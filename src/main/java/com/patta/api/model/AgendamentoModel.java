@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.util.Date;
+import java.util.List;
 
 @Getter
 @Setter
@@ -18,6 +19,7 @@ public class AgendamentoModel {
     private String id;
     private String usuarioId;
     private String animalId;
+    private List<String> animalIds;
     private String servico;
     private String data;
     private String horario;

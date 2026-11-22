@@ -84,20 +84,7 @@ public class AgendamentoService {
     public AgendamentoResponseDTO criarParaProfissional(String uid, String referenciaId,
                                                          ProfissionalAgendamentoRequestDTO request)
             throws ExecutionException, InterruptedException {
-        exigirEquipe(uid);
-        AgendamentoModel referencia = buscarExistente(referenciaId);
-        if (!isAdministrador(uid) && !"USER".equals(papelUsuarioService.buscarPapel(referencia.getUsuarioId()))) {
-            throw naoEncontrado();
-        }
-        animalService.buscar(referencia.getUsuarioId(), referencia.getAnimalId());
-        AgendamentoRequestDTO novo = new AgendamentoRequestDTO(
-                referencia.getAnimalId(),
-                request.servico(),
-                request.data(),
-                request.horario(),
-                null,
-                request.tempoHospedagemDias());
-        return criarParaDono(referencia.getUsuarioId(), novo);
+        return criarVariosParaProfissional(uid, referenciaId, request).getFirst();
     }
 
     public List<AgendamentoResponseDTO> criarVariosParaProfissional(String uid, String referenciaId,
@@ -109,12 +96,13 @@ public class AgendamentoService {
             throw naoEncontrado();
         }
         List<String> animalIds = request.animalIds() == null || request.animalIds().isEmpty()
-                ? List.of(referencia.getAnimalId())
+                ? animaisDoAgendamento(referencia)
                 : request.animalIds().stream().map(String::trim).toList();
         validarAnimaisDoDono(referencia.getUsuarioId(), animalIds);
         AgendamentoRequestDTO novo = new AgendamentoRequestDTO(animalIds, request.servico(), request.data(),
                 request.horario(), null, request.tempoHospedagemDias());
-        return criarParaAnimais(referencia.getUsuarioId(), animalIds, novo);
+        return criarParaAnimais(referencia.getUsuarioId(), animalIds, novo,
+                AgendamentoStatus.APROVADO.name(), referenciaId);
     }
 
     private void validarAnimaisDoDono(String usuarioUid, List<String> animalIds)
@@ -127,17 +115,33 @@ public class AgendamentoService {
     private List<AgendamentoResponseDTO> criarParaAnimais(String usuarioUid, List<String> animalIds,
                                                            AgendamentoRequestDTO request)
             throws ExecutionException, InterruptedException {
-        if (animalIds.size() == 1) {
-            return List.of(criarParaDono(usuarioUid, requestParaAnimal(request, animalIds.getFirst())));
-        }
+        return criarParaAnimais(usuarioUid, animalIds, request, AgendamentoStatus.PENDENTE.name(), null);
+    }
+
+    private List<AgendamentoResponseDTO> criarParaAnimais(String usuarioUid, List<String> animalIds,
+                                                           AgendamentoRequestDTO request, String status,
+                                                           String agendamentoSubstituidoId)
+            throws ExecutionException, InterruptedException {
         PreparacaoAgendamento preparacao = prepararAgendamento(request);
         Instant agora = Instant.now();
         List<AgendamentoModel> modelos = new ArrayList<>();
-        for (String animalId : animalIds) {
-            modelos.add(criarModelo(usuarioUid, animalId, request, preparacao, agora));
+        if (preparacao.hospedagem()) {
+            AgendamentoModel hospedagem = criarModelo(
+                    usuarioUid, animalIds.getFirst(), request, preparacao, agora, status);
+            hospedagem.setAnimalIds(List.copyOf(animalIds));
+            modelos.add(hospedagem);
+        } else {
+            for (String animalId : animalIds) {
+                modelos.add(criarModelo(usuarioUid, animalId, requestParaAnimal(request, animalId),
+                        preparacao, agora, status));
+            }
         }
         try {
-            return agendamentoRepository.saveAllIfAvailable(modelos, preparacao.capacidade()).stream()
+            List<AgendamentoModel> salvos = agendamentoSubstituidoId == null && modelos.size() == 1
+                    ? List.of(agendamentoRepository.saveIfAvailable(modelos.getFirst(), preparacao.capacidade()))
+                    : agendamentoRepository.saveAllIfAvailable(
+                            modelos, preparacao.capacidade(), agendamentoSubstituidoId);
+            return salvos.stream()
                     .map(this::toResponse)
                     .toList();
         } catch (AgendamentoRepository.AgendamentoDuplicadoException exception) {
@@ -145,13 +149,17 @@ public class AgendamentoService {
                     "Este pet já possui um agendamento ativo para o mesmo serviço, data e horário.", exception);
         } catch (AgendamentoRepository.ConflitoReservaException exception) {
             throw conflitoReserva(preparacao.hospedagem(), exception);
+        } catch (AgendamentoRepository.AgendamentoSubstituidoException exception) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "O agendamento original não pode mais ser reagendado.", exception);
         }
     }
 
     private AgendamentoResponseDTO criarParaDono(String uid, AgendamentoRequestDTO request)
             throws ExecutionException, InterruptedException {
         PreparacaoAgendamento preparacao = prepararAgendamento(request);
-        AgendamentoModel agendamento = criarModelo(uid, request.animalId(), request, preparacao, Instant.now());
+        AgendamentoModel agendamento = criarModelo(
+                uid, request.animalId(), request, preparacao, Instant.now(), AgendamentoStatus.PENDENTE.name());
         try {
             return toResponse(agendamentoRepository.saveIfAvailable(agendamento, preparacao.capacidade()));
         } catch (AgendamentoRepository.AgendamentoDuplicadoException exception) {
@@ -198,10 +206,11 @@ public class AgendamentoService {
     }
 
     private AgendamentoModel criarModelo(String uid, String animalId, AgendamentoRequestDTO request,
-                                         PreparacaoAgendamento preparacao, Instant agora) {
+                                         PreparacaoAgendamento preparacao, Instant agora, String status) {
         return AgendamentoModel.builder()
                 .usuarioId(uid)
                 .animalId(animalId.trim())
+                .animalIds(List.of(animalId.trim()))
                 .servico(preparacao.servico())
                 .data(request.data().toString())
                 .horario(request.horario().toString())
@@ -209,7 +218,7 @@ public class AgendamentoService {
                 .tempoHospedagemDias(request.tempoHospedagemDias())
                 .duracaoMinutos(preparacao.disponibilidade() == null
                         ? null : preparacao.disponibilidade().getDuracaoMinutos())
-                .status(AgendamentoStatus.PENDENTE.name())
+                .status(status)
                 .observacoes(normalizarObservacoes(request.observacoes()))
                 .criadoEm(Date.from(agora))
                 .atualizadoEm(Date.from(agora))
@@ -234,6 +243,12 @@ public class AgendamentoService {
     private AgendamentoRequestDTO requestParaAnimal(AgendamentoRequestDTO request, String animalId) {
         return new AgendamentoRequestDTO(animalId, request.servico(), request.data(),
                 request.horario(), request.observacoes(), request.tempoHospedagemDias());
+    }
+
+    private List<String> animaisDoAgendamento(AgendamentoModel agendamento) {
+        return agendamento.getAnimalIds() == null || agendamento.getAnimalIds().isEmpty()
+                ? List.of(agendamento.getAnimalId())
+                : agendamento.getAnimalIds();
     }
 
     public List<AgendamentoResponseDTO> listar(String uid)
@@ -423,7 +438,8 @@ public class AgendamentoService {
                 agendamento.getCheckOutEm() == null ? null : agendamento.getCheckOutEm().toInstant(),
                 agendamento.getCheckOutPor(),
                 agendamento.getCriadoEm().toInstant(),
-                agendamento.getAtualizadoEm().toInstant());
+                agendamento.getAtualizadoEm().toInstant(),
+                List.copyOf(animaisDoAgendamento(agendamento)));
     }
 
     private LocalDateTime parsearSaidaPrevista(AgendamentoModel agendamento, LocalDate data, LocalTime horario) {

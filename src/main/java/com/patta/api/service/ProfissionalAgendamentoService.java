@@ -33,7 +33,7 @@ public class ProfissionalAgendamentoService {
                 continue;
             }
             respostas.add(toResponse(agendamento, buscarTutor(agendamento.usuarioId()),
-                    buscarPet(agendamento.animalId())));
+                    buscarPets(agendamento.animalIds(), agendamento.animalId())));
         }
         return List.copyOf(respostas);
     }
@@ -44,7 +44,8 @@ public class ProfissionalAgendamentoService {
                 && !"USER".equals(papelUsuarioService.buscarPapel(agendamento.usuarioId()))) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Agendamento não encontrado.");
         }
-        return toResponse(agendamento, buscarTutor(agendamento.usuarioId()), buscarPet(agendamento.animalId()));
+        return toResponse(agendamento, buscarTutor(agendamento.usuarioId()),
+                buscarPets(agendamento.animalIds(), agendamento.animalId()));
     }
 
     private String buscarTutor(String uid) throws ExecutionException, InterruptedException {
@@ -53,10 +54,21 @@ public class ProfissionalAgendamentoService {
                 .orElse("Tutor");
     }
 
-    private String buscarPet(String id) throws ExecutionException, InterruptedException {
-        return animalRepository.findById(id)
-                .map(animal -> animal.getNome() == null ? "" : animal.getNome())
-                .orElse("Pet");
+    private String buscarPets(List<String> animalIds, String animalId)
+            throws ExecutionException, InterruptedException {
+        List<String> ids = animalIds == null || animalIds.isEmpty()
+                ? animalId == null ? List.of() : List.of(animalId)
+                : animalIds;
+        if (ids.isEmpty()) {
+            return "Pet";
+        }
+        List<String> nomes = new ArrayList<>();
+        for (String id : ids) {
+            nomes.add(animalRepository.findById(id)
+                    .map(animal -> animal.getNome() == null ? "" : animal.getNome())
+                    .orElse("Pet"));
+        }
+        return String.join(", ", nomes);
     }
 
     private ProfissionalAgendamentoResponseDTO toResponse(

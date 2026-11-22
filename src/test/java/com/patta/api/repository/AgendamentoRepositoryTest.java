@@ -53,6 +53,16 @@ class AgendamentoRepositoryTest {
     }
 
     @Test
+    void contabilizaCadaPetDentroDaHospedagemAgrupada() {
+        LocalDateTime inicio = LocalDateTime.of(2026, 11, 10, 9, 0);
+        AgendamentoModel grupo = hospedagem("grupo", inicio, inicio.plusDays(2));
+        grupo.setAnimalIds(List.of("pet-1", "pet-2", "pet-3"));
+
+        assertEquals(3, AgendamentoRepository.calcularPicoOcupacaoHospedagem(
+                List.of(grupo), inicio, inicio.plusDays(2)));
+    }
+
+    @Test
     void checkoutECancelamentoLiberamVagasMasCheckInSemCheckoutMantemOcupacao() {
         LocalDateTime inicio = LocalDateTime.of(2026, 11, 10, 9, 0);
         AgendamentoModel cancelada = hospedagem("cancelada", inicio, inicio.plusDays(1));
@@ -117,6 +127,22 @@ class AgendamentoRepositoryTest {
         verify(fixture.transaction).set(fixture.newBooking, salva);
     }
 
+    @Test
+    void transacaoAprovaNovoAgendamentoECancelaOriginalAoReagendar() throws Exception {
+        TransacaoHospedagem fixture = new TransacaoHospedagem(true, 1L, true);
+        AgendamentoModel novo = novaHospedagem();
+        novo.setStatus("APROVADO");
+
+        List<AgendamentoModel> salvos = fixture.repository.saveAllIfAvailable(
+                List.of(novo), 0, "original");
+
+        assertEquals("nova", salvos.getFirst().getId());
+        verify(fixture.transaction).update(eq(fixture.originalBooking),
+                org.mockito.ArgumentMatchers.argThat(campos ->
+                        "CANCELADO".equals(campos.get("status"))
+                                && campos.get("atualizadoEm") instanceof Date));
+    }
+
     private AgendamentoModel hospedagem(String id, LocalDateTime inicio, LocalDateTime fim) {
         return AgendamentoModel.builder()
                 .id(id)
@@ -129,7 +155,7 @@ class AgendamentoRepositoryTest {
                 .build();
     }
 
-    private AgendamentoModel novaHospedagem() {
+    private static AgendamentoModel novaHospedagem() {
         LocalDateTime inicio = LocalDateTime.of(2026, 11, 10, 9, 0);
         return AgendamentoModel.builder()
                 .servico("hospedagem")
@@ -149,20 +175,28 @@ class AgendamentoRepositoryTest {
         private final CollectionReference locks = mock(CollectionReference.class);
         private final CollectionReference configs = mock(CollectionReference.class);
         private final DocumentReference newBooking = mock(DocumentReference.class);
+        private final DocumentReference originalBooking = mock(DocumentReference.class);
         private final DocumentReference lock = mock(DocumentReference.class);
         private final DocumentReference configClinica = mock(DocumentReference.class);
         private final DocumentSnapshot lockSnapshot = mock(DocumentSnapshot.class);
         private final DocumentSnapshot configSnapshot = mock(DocumentSnapshot.class);
+        private final DocumentSnapshot originalSnapshot = mock(DocumentSnapshot.class);
         private final Query query = mock(Query.class);
         private final QuerySnapshot querySnapshot = mock(QuerySnapshot.class);
         private final Transaction transaction = mock(Transaction.class);
         private final AgendamentoRepository repository = new AgendamentoRepository(firestore);
 
         private TransacaoHospedagem(boolean capacidadeConfigurada, Long capacidade) throws Exception {
+            this(capacidadeConfigurada, capacidade, false);
+        }
+
+        private TransacaoHospedagem(boolean capacidadeConfigurada, Long capacidade,
+                                    boolean originalConfigurado) throws Exception {
             when(firestore.collection("agendamentos")).thenReturn(bookings);
             when(firestore.collection("travasReservas")).thenReturn(locks);
             when(firestore.collection("configuracao")).thenReturn(configs);
             when(bookings.document()).thenReturn(newBooking);
+            when(bookings.document("original")).thenReturn(originalBooking);
             when(newBooking.getId()).thenReturn("nova");
             when(locks.document("hospedagem")).thenReturn(lock);
             when(configs.document("clinica")).thenReturn(configClinica);
@@ -171,6 +205,15 @@ class AgendamentoRepositoryTest {
             when(transaction.get(lock)).thenReturn(ApiFutures.immediateFuture(lockSnapshot));
             when(transaction.get(query)).thenReturn(ApiFutures.immediateFuture(querySnapshot));
             when(transaction.get(configClinica)).thenReturn(ApiFutures.immediateFuture(configSnapshot));
+            if (originalConfigurado) {
+                AgendamentoModel original = novaHospedagem();
+                original.setId("original");
+                original.setStatus("APROVADO");
+                when(originalSnapshot.exists()).thenReturn(true);
+                when(originalSnapshot.toObject(AgendamentoModel.class)).thenReturn(original);
+                when(originalSnapshot.getReference()).thenReturn(originalBooking);
+                when(transaction.get(originalBooking)).thenReturn(ApiFutures.immediateFuture(originalSnapshot));
+            }
             when(lockSnapshot.exists()).thenReturn(false);
             when(configSnapshot.exists()).thenReturn(capacidadeConfigurada);
             when(configSnapshot.getLong("capacidadeHospedagem")).thenReturn(capacidade);
