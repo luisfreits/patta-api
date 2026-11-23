@@ -12,10 +12,6 @@ import org.springframework.web.server.ResponseStatusException;
 import java.io.IOException;
 import java.util.concurrent.ExecutionException;
 
-/**
- * Foto de perfil guardada no Firestore (coleção "imagens").
- * O Firestore limita cada documento a 1 MiB, então o arquivo tem teto de 700 KB.
- */
 @Service
 @RequiredArgsConstructor
 public class FotoPerfilService {

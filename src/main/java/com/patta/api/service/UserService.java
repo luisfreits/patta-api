@@ -6,6 +6,7 @@ import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.UserRecord;
 import com.patta.api.dto.UserResponseDTO;
 import com.patta.api.dto.UserUpdateDTO;
+import com.patta.api.model.AnimalModel;
 import com.patta.api.model.UserModel;
 import com.patta.api.repository.AgendamentoRepository;
 import com.patta.api.repository.AnimalRepository;
@@ -166,6 +167,10 @@ public class UserService {
 
     private void deletarConta(String uid) throws ExecutionException, InterruptedException {
         buscarUsuario(uid); // Confirma que o usuário existe antes de apagar qualquer coisa
+        // As fotos dos pets ficam na coleção "imagens"; apagá-las antes de remover os animais
+        for (AnimalModel animal : animalRepository.findByUserId(uid)) {
+            imagemRepository.deleteById(FotoAnimalService.chave(animal.getId()));
+        }
         // O repository divide a exclusão em lotes quando há muitos documentos (limite de 500 operações por batch no Firestore)
         animalRepository.deleteByUserId(uid);
         agendamentoRepository.deleteByUsuarioId(uid);

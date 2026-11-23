@@ -32,4 +32,5 @@ public class AnimalModel {
     private Integer idade;
     private String animal;   // Espécie (ex.: "cachorro")
     private Boolean castrado;
+    private Boolean temFoto; // true quando há foto salva na coleção "imagens"
 }

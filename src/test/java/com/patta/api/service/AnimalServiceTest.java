@@ -4,6 +4,7 @@ import com.patta.api.dto.AnimalRequestDTO;
 import com.patta.api.dto.AnimalResponseDTO;
 import com.patta.api.model.AnimalModel;
 import com.patta.api.repository.AnimalRepository;
+import com.patta.api.repository.ImagemRepository;
 import com.patta.api.repository.RegistroClinicoRepository;
 import com.patta.api.repository.VacinaRepository;
 import jakarta.validation.Validation;
@@ -39,13 +40,14 @@ class AnimalServiceTest {
     private final AnimalRepository animalRepository = mock(AnimalRepository.class);
     private final RegistroClinicoRepository registroClinicoRepository = mock(RegistroClinicoRepository.class);
     private final VacinaRepository vacinaRepository = mock(VacinaRepository.class);
+    private final ImagemRepository imagemRepository = mock(ImagemRepository.class);
     private final AnimalService animalService = new AnimalService(
             animalRepository, registroClinicoRepository, vacinaRepository,
-            new PapelUsuarioService(ADMIN_UID));
+            new PapelUsuarioService(ADMIN_UID), imagemRepository);
 
     @BeforeEach
     void limparMocks() {
-        org.mockito.Mockito.reset(animalRepository, registroClinicoRepository, vacinaRepository);
+        org.mockito.Mockito.reset(animalRepository, registroClinicoRepository, vacinaRepository, imagemRepository);
     }
 
     @AfterAll
@@ -178,6 +180,7 @@ class AnimalServiceTest {
         animalService.deletar(UID, "animal-1");
 
         verify(animalRepository).deleteById("animal-1");
+        verify(imagemRepository).deleteById(FotoAnimalService.chave("animal-1"));
     }
 
     @Test

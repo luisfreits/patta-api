@@ -4,6 +4,7 @@ import com.patta.api.dto.AnimalRequestDTO;
 import com.patta.api.dto.AnimalResponseDTO;
 import com.patta.api.model.AnimalModel;
 import com.patta.api.repository.AnimalRepository;
+import com.patta.api.repository.ImagemRepository;
 import com.patta.api.repository.RegistroClinicoRepository;
 import com.patta.api.repository.VacinaRepository;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,7 @@ public class AnimalService {
     private final RegistroClinicoRepository registroClinicoRepository;
     private final VacinaRepository vacinaRepository;
     private final PapelUsuarioService papelUsuarioService;
+    private final ImagemRepository imagemRepository;
 
     /** Cria um animal. O dono é o uid autenticado, nunca um campo enviado pelo cliente. */
     public AnimalResponseDTO criar(String uid, AnimalRequestDTO dados) throws ExecutionException, InterruptedException {
@@ -86,6 +88,7 @@ public class AnimalService {
         buscarDoUsuario(uid, animalId); // Lança 404 se não existir ou não for do usuário
         registroClinicoRepository.deleteByAnimalId(animalId);
         vacinaRepository.deleteByAnimalId(animalId);
+        imagemRepository.deleteById(FotoAnimalService.chave(animalId));
         animalRepository.deleteById(animalId);
     }
 
@@ -121,6 +124,7 @@ public class AnimalService {
                 .idade(animal.getIdade())
                 .animal(animal.getAnimal())
                 .castrado(animal.getCastrado())
+                .temFoto(Boolean.TRUE.equals(animal.getTemFoto()))
                 .build();
     }
 }

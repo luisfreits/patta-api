@@ -15,5 +15,6 @@ public record AnimalResponseDTO(
         String sexo,
         Integer idade,
         String animal,   // Espécie
-        Boolean castrado
+        Boolean castrado,
+        Boolean temFoto  // true quando o pet tem foto no banco
 ) {}
