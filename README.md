@@ -406,6 +406,7 @@ capacidade permanecem as da regra específica. Com o valor omitido ou `false`, a
 específica substitui o padrão. Em uma configuração em período com continuação ativada,
 somente a primeira data recebe essa opção; os dias seguintes não a herdam.
 
+
 `GET /disponibilidade` exige autenticação e retorna `duracaoMinutos` e uma lista com
 horário, capacidade e vagas disponíveis. Para consulta e vacina, solicitações
 pendentes/aprovadas ocupam a capacidade quando seus períodos se sobrepõem. Para
